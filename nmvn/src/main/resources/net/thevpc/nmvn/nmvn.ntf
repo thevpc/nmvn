@@ -5,17 +5,24 @@ manage multi-project maven worksets and versions
 ==nmvn== [**--version** <MVN_VERSION>] [{{args...}}]
 ==nmvn== **workset** [**list**|**path**|**get**|**set**|**add-root**|**remove-root**|**scan**|**edit**] [{{options...}}]
 ==nmvn== **version scan**    [**--workset** <FILE>] [**-j**|**--json**]
-==nmvn== **version bump**    [**--workset** <FILE>] [**--dry**] [**--cascade-references-only**|**--cascade-versions**] [**-a** <GA#VER>]...
+==nmvn== **version bump**    [**--workset** <FILE>] [**--dry**] [**--patch**|**--minor**|**--major**] [**-f**|**--force**] [**--cascade-references-only**|**--cascade-versions**] [**-a** <GA[#VER]>]...
+==nmvn== **version update**  [**--workset** <FILE>] [**--dry**] [**-a** <GA#VER>]...
 ==nmvn== **version release** [**--workset** <FILE>] [**--dry**] [**--strict**] [**-a** <GA#VER>]...
 ==nmvn== **version check**   [**--workset** <FILE>] [**--fail-on-warning**] [**-j**|**--json**]
 
 ##) OPTIONS:
 
-    ```sh -a <GA#VER> | -a=<GA#VER> | --artifact=<GA#VER>```
-        specify target artifact and version using standard Nuts '#' delimiter (e.g. `com.example:mod1#1.1.0-SNAPSHOT`) or '=' delimiter (`com.example:mod1=1.1.0-SNAPSHOT`). Can be specified multiple times.
+    ```sh -a <GA[#VER]> | -a=<GA[#VER]> | --artifact=<GA[#VER]>```
+        specify target artifact and optional version using standard Nuts '#' delimiter (e.g. `com.example:mod1#1.1.0-SNAPSHOT`) or '=' delimiter (`com.example:mod1=1.1.0-SNAPSHOT`). For bump, omitting version auto-increments using the selected or default policy. Can be specified multiple times.
+
+    ```sh --patch | --minor | --major```
+        increment target artifact(s) or all workspace artifacts by patch, minor, or major.
+
+    ```sh -f | --force```
+        in bump mode, force advancing an artifact that is already in snapshot mode.
 
     ```sh --cascade-references-only```
-        (default) update dependency, parent, and property references in consuming modules without changing their own project versions.
+        (default) update dependency, parent, and property references in consuming modules without changing their own project versions. If a consuming module was a release, it is automatically bumped to snapshot to preserve release immutability.
 
     ```sh --cascade-versions```
         cascade version bump through the dependency graph: updates references AND increments the project version of all direct and indirect dependents.
@@ -36,27 +43,27 @@ manage multi-project maven worksets and versions
 
     **1. Start New Development Cycle (Post-Release Bump with Cascading Versions)**
     Bump released module `A` to snapshot and cascade to dependent modules `B`:
-    ```sh nmvn version bump -a com.example:A#1.0.1-SNAPSHOT --cascade-versions --dry```
-    ```sh nmvn version bump -a=com.example:A#1.0.1-SNAPSHOT --cascade-versions```
+    ```sh nmvn version bump -a com.example:A --patch --cascade-versions --dry```
+    ```sh nmvn version bump -a com.example:A --patch --cascade-versions```
 
-    **2. Active Development Bump (Align References Only)**
-    When modules are already snapshots, align references without bumping downstream versions:
-    ```sh nmvn version bump -a com.example:A#1.1.0-SNAPSHOT```
-    ```sh nmvn version bump -a=com.example:A#1.1.0-SNAPSHOT --cascade-references-only```
+    **2. Active Development Bump (Auto-Increment / Idempotent)**
+    Bump module using semver flags without needing to calculate next version:
+    ```sh nmvn version bump -a com.example:A --minor```
+    ```sh nmvn version bump -a com.example:A --patch --force```
 
-    **3. Resolve Multi-Version Discrepancies**
-    Audit workspace and harmonize all referencing POMs to a single version:
-    ```sh nmvn version check```
-    ```sh nmvn version bump -a net.thevpc.hl:hadra-lang#0.1.1 --cascade-references-only```
-    ```sh nmvn version check```
+    **3. Strict Version Assignment / Dependency Alignment (`update`)**
+    Update artifact to a strict version and align all references across workspace:
+    ```sh nmvn version update -a net.thevpc.hl:hadra-lang#0.1.1```
+    ```sh nmvn version update -a com.example:core#2.0.0-SNAPSHOT```
 
     **4. Synchronized / Lockstep Monorepo Bump**
-    Bump multiple modules together in a single command:
+    Bump all workspace modules together:
+    ```sh nmvn version bump --minor```
     ```sh nmvn version bump -a com.example:core#2.0.0-SNAPSHOT -a com.example:client#2.0.0-SNAPSHOT```
 
     **5. Upstream Parent or BOM Upgrade**
     Update shared parent POM or BOM across child modules:
-    ```sh nmvn version bump -a com.example:company-parent#5.0.0 --cascade-references-only```
+    ```sh nmvn version update -a com.example:company-parent#5.0.0```
 
     **6. Release Artifacts (Fix Snapshots)**
     Strip -SNAPSHOT from all workspace artifacts and convert references to release:

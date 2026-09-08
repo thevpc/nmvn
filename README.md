@@ -174,64 +174,51 @@ nmvn version check --json
 
 #### 3. Bump Versions (`nmvn version bump`)
 
-Artifact coordinates can be specified using either the Nuts standard `#` delimiter or `=`:
-- `-a com.example:A#1.0.1-SNAPSHOT` or `-a=com.example:A#1.0.1-SNAPSHOT`
-- `-a com.example:A=1.0.1-SNAPSHOT` or `-a=com.example:A=1.0.1-SNAPSHOT`
+Use `bump` to **increment** versions using SemVer arithmetic (`--patch`, `--minor`, `--major`). `nmvn` automatically calculates the next version for you.
 
-##### Common Workflows:
+- **Idempotent by default**: If an artifact is already a `-SNAPSHOT` (e.g. `1.2.1-SNAPSHOT`), `bump --patch` leaves it unchanged unless `--force` (`-f`) is specified.
+- **Release Immutability**: If a consuming module in the workspace is a release (not a snapshot) and its POM is modified because its dependency was bumped, it is **automatically bumped to `next-SNAPSHOT`**. Consuming modules that are already snapshots remain at their current version.
 
-**Workflow A: Starting a New Development Cycle (Post-Release Bump with Cascading Versions)**  
-When projects were released (`A: 1.0.0`, `B: 2.0.0`), starting work on `A` requires bumping `A` to snapshot (`1.0.1-SNAPSHOT`). Downstream project `B` which depends on `A` must also be bumped to a snapshot (`2.0.1-SNAPSHOT`) and updated to reference `A#1.0.1-SNAPSHOT`:
 ```bash
-# Preview changes in dry-run mode
-nmvn version bump -a com.example:A#1.0.1-SNAPSHOT --cascade-versions --dry
+# Auto-increment patch (1.2.0 -> 1.2.1-SNAPSHOT)
+nmvn version bump -a com.example:core --patch
 
-# Apply to POM files on disk
-nmvn version bump -a com.example:A#1.0.1-SNAPSHOT --cascade-versions
-# (or with '=': nmvn version bump -a=com.example:A#1.0.1-SNAPSHOT --cascade-versions)
-```
+# Auto-increment minor (1.2.0 -> 1.3.0-SNAPSHOT)
+nmvn version bump -a com.example:core --minor
 
-**Workflow B: Active Development Bump (Aligning References Only)**  
-When projects are already in snapshot mode (`A#1.0.0-SNAPSHOT`, `B#2.0.0-SNAPSHOT`), bumping `A` to `1.1.0-SNAPSHOT` only needs to update `B`'s `<dependency>` tag. `B`'s own version remains `2.0.0-SNAPSHOT` (avoiding continuous version number inflation during day-to-day coding):
-```bash
-# Default behavior (cascade-references-only):
-nmvn version bump -a com.example:A#1.1.0-SNAPSHOT
+# Force advancing an already-snapshot artifact (1.2.1-SNAPSHOT -> 1.2.2-SNAPSHOT)
+nmvn version bump -a com.example:core --patch --force
 
-# Explicit syntax:
-nmvn version bump -a=com.example:A#1.1.0-SNAPSHOT --cascade-references-only
-```
+# Bump all workspace projects by minor in one command
+nmvn version bump --minor
 
-**Workflow C: Resolving Multi-Version Discrepancies**  
-When `nmvn version check` detects multiple differing versions of a dependency across the workspace (e.g. `hadra-lang: 0.1.1 vs 0.1.0`), align all referencing POMs to use `0.1.1`:
-```bash
-# 1. Audit workspace
-nmvn version check
-
-# 2. Align all references across all workspace POMs to 0.1.1
-nmvn version bump -a net.thevpc.hl:hadra-lang#0.1.1 --cascade-references-only
-
-# 3. Verify clean status
-nmvn version check
-```
-
-**Workflow D: Synchronized / Lockstep Monorepo Bump**  
-Bump multiple modules in the workspace together:
-```bash
-nmvn version bump \
-  -a com.example:core#2.0.0-SNAPSHOT \
-  -a com.example:client#2.0.0-SNAPSHOT \
-  -a com.example:server#2.0.0-SNAPSHOT
-```
-
-**Workflow E: Upstream Parent or BOM Upgrade**  
-Update a shared `<parent>` or `<dependencyManagement>` BOM across child POMs:
-```bash
-nmvn version bump -a com.example:company-parent#5.0.0 --cascade-references-only
+# Bump module and cascade version increments to all dependents
+nmvn version bump -a com.example:core --patch --cascade-versions
 ```
 
 ---
 
-#### 4. Release Artifacts (`nmvn version release`)
+#### 4. Update Versions Strictly (`nmvn version update` or `set`)
+
+Use `update` to set an **exact, strict target version** on an artifact and align all workspace references.
+
+Coordinates support standard Nuts `#` notation or `=`:
+`-a <GA#VERSION>` or `-a=<GA#VERSION>`
+
+```bash
+# Update internal module to an exact version and align all consumers:
+nmvn version update -a com.example:core#2.0.0-SNAPSHOT
+
+# Align a third-party dependency or BOM across the entire workspace (e.g. resolving MULTI_VERSION_DEPENDENCY):
+nmvn version update -a net.thevpc.hl:hadra-lang#0.1.1
+
+# Upgrade a shared parent POM across all child modules:
+nmvn version update -a com.example:company-parent#5.0.0
+```
+
+---
+
+#### 5. Release Artifacts (`nmvn version release`)
 
 Convert `-SNAPSHOT` artifacts to clean release versions and update all workspace references:
 ```bash

@@ -346,4 +346,138 @@ public class NMvnCliTest {
         Assert.assertEquals(0, c5);
         Assert.assertTrue(mod1.resolve("pom.xml").readString().contains("<version>1.2.0-SNAPSHOT</version>"));
     }
+
+    @Test
+    public void testVersionUpdateSubcommandWithReleaseImmutability() throws Exception {
+        NPath root = NPath.of(temp.newFolder("cli-update-immutability-test"));
+        NPath modA = root.resolve("mod-a");
+        NPath modB = root.resolve("mod-b");
+        NPath modC = root.resolve("mod-c");
+
+        // mod-a: release 1.0.0
+        createPom(modA,
+                "<project>\n" +
+                "  <modelVersion>4.0.0</modelVersion>\n" +
+                "  <groupId>com.cli</groupId>\n" +
+                "  <artifactId>mod-a</artifactId>\n" +
+                "  <version>1.0.0</version>\n" +
+                "</project>");
+
+        // mod-b: release 2.0.0, depends on mod-a
+        createPom(modB,
+                "<project>\n" +
+                "  <modelVersion>4.0.0</modelVersion>\n" +
+                "  <groupId>com.cli</groupId>\n" +
+                "  <artifactId>mod-b</artifactId>\n" +
+                "  <version>2.0.0</version>\n" +
+                "  <dependencies>\n" +
+                "    <dependency>\n" +
+                "      <groupId>com.cli</groupId>\n" +
+                "      <artifactId>mod-a</artifactId>\n" +
+                "      <version>1.0.0</version>\n" +
+                "    </dependency>\n" +
+                "  </dependencies>\n" +
+                "</project>");
+
+        // mod-c: snapshot 3.0.0-SNAPSHOT, depends on mod-a
+        createPom(modC,
+                "<project>\n" +
+                "  <modelVersion>4.0.0</modelVersion>\n" +
+                "  <groupId>com.cli</groupId>\n" +
+                "  <artifactId>mod-c</artifactId>\n" +
+                "  <version>3.0.0-SNAPSHOT</version>\n" +
+                "  <dependencies>\n" +
+                "    <dependency>\n" +
+                "      <groupId>com.cli</groupId>\n" +
+                "      <artifactId>mod-a</artifactId>\n" +
+                "      <version>1.0.0</version>\n" +
+                "    </dependency>\n" +
+                "  </dependencies>\n" +
+                "</project>");
+
+        NSession session = NSession.of();
+        MvnVersionCli cli = new MvnVersionCli(session);
+
+        // Update mod-a to 1.1.0-SNAPSHOT
+        int code = cli.run(new String[]{"update", "--root", root.toString(), "-a", "com.cli:mod-a#1.1.0-SNAPSHOT"}, false);
+        Assert.assertEquals(0, code);
+
+        // 1. mod-a should be 1.1.0-SNAPSHOT
+        String aContent = modA.resolve("pom.xml").readString();
+        Assert.assertTrue(aContent.contains("<version>1.1.0-SNAPSHOT</version>"));
+
+        // 2. mod-b was release 2.0.0, so it MUST bump to snapshot (2.1.0-SNAPSHOT by default minor increment) because POM was modified
+        String bContent = modB.resolve("pom.xml").readString();
+        Assert.assertTrue("mod-b version should be bumped to 2.1.0-SNAPSHOT", bContent.contains("<version>2.1.0-SNAPSHOT</version>"));
+        Assert.assertTrue("mod-b dependency on mod-a should be updated to 1.1.0-SNAPSHOT", bContent.contains("<version>1.1.0-SNAPSHOT</version>"));
+
+        // 3. mod-c was already snapshot 3.0.0-SNAPSHOT, so its version should stay 3.0.0-SNAPSHOT
+        String cContent = modC.resolve("pom.xml").readString();
+        Assert.assertTrue("mod-c own version should remain 3.0.0-SNAPSHOT", cContent.contains("<artifactId>mod-c</artifactId>\n  <version>3.0.0-SNAPSHOT</version>"));
+        Assert.assertTrue("mod-c dependency on mod-a should be updated to 1.1.0-SNAPSHOT", cContent.contains("<version>1.1.0-SNAPSHOT</version>"));
+    }
+
+    @Test
+    public void testVersionBumpSnapshotIdempotencyAndForce() throws Exception {
+        NPath root = NPath.of(temp.newFolder("cli-bump-force-test"));
+        NPath mod1 = root.resolve("mod1");
+
+        createPom(mod1,
+                "<project>\n" +
+                "  <modelVersion>4.0.0</modelVersion>\n" +
+                "  <groupId>com.cli</groupId>\n" +
+                "  <artifactId>mod1</artifactId>\n" +
+                "  <version>1.2.1-SNAPSHOT</version>\n" +
+                "</project>");
+
+        NSession session = NSession.of();
+        MvnVersionCli cli = new MvnVersionCli(session);
+
+        // Running bump --patch without --force on an existing snapshot should NOT advance the version
+        int c1 = cli.run(new String[]{"bump", "--root", root.toString(), "-a", "com.cli:mod1", "--patch"}, false);
+        Assert.assertEquals(0, c1);
+        Assert.assertTrue(mod1.resolve("pom.xml").readString().contains("<version>1.2.1-SNAPSHOT</version>"));
+
+        // Running bump --patch with --force SHOULD advance the snapshot to 1.2.2-SNAPSHOT
+        int c2 = cli.run(new String[]{"bump", "--root", root.toString(), "-a", "com.cli:mod1", "--patch", "--force"}, false);
+        Assert.assertEquals(0, c2);
+        Assert.assertTrue(mod1.resolve("pom.xml").readString().contains("<version>1.2.2-SNAPSHOT</version>"));
+    }
+
+    @Test
+    public void testVersionBumpAutoIncrementFlags() throws Exception {
+        NPath root = NPath.of(temp.newFolder("cli-bump-flags-test"));
+        NPath mod1 = root.resolve("mod1");
+
+        // Release 1.2.0
+        createPom(mod1,
+                "<project>\n" +
+                "  <modelVersion>4.0.0</modelVersion>\n" +
+                "  <groupId>com.cli</groupId>\n" +
+                "  <artifactId>mod1</artifactId>\n" +
+                "  <version>1.2.0</version>\n" +
+                "</project>");
+
+        NSession session = NSession.of();
+        MvnVersionCli cli = new MvnVersionCli(session);
+
+        // Bump minor: 1.2.0 -> 1.3.0-SNAPSHOT
+        int c1 = cli.run(new String[]{"bump", "--root", root.toString(), "-a", "com.cli:mod1", "--minor"}, false);
+        Assert.assertEquals(0, c1);
+        Assert.assertTrue(mod1.resolve("pom.xml").readString().contains("<version>1.3.0-SNAPSHOT</version>"));
+
+        // Reset to 1.0.0 release
+        createPom(mod1,
+                "<project>\n" +
+                "  <modelVersion>4.0.0</modelVersion>\n" +
+                "  <groupId>com.cli</groupId>\n" +
+                "  <artifactId>mod1</artifactId>\n" +
+                "  <version>1.0.0</version>\n" +
+                "</project>");
+
+        // Bump major across whole workspace (no -a passed): 1.0.0 -> 2.0.0-SNAPSHOT
+        int c2 = cli.run(new String[]{"bump", "--root", root.toString(), "--major"}, false);
+        Assert.assertEquals(0, c2);
+        Assert.assertTrue(mod1.resolve("pom.xml").readString().contains("<version>2.0.0-SNAPSHOT</version>"));
+    }
 }
