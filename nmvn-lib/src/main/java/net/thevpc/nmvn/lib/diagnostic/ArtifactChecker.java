@@ -223,7 +223,7 @@ public class ArtifactChecker {
                     }
                 }
 
-                String versionsSummary = String.join(" vs ", versionToProjects.keySet());
+                String versionsSummary = String.join(" vs ", new TreeSet<>(versionToProjects.keySet()));
 
                 if (hasSnapshot && hasRelease) {
                     issues.add(new DiagnosticIssue(

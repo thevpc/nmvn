@@ -63,7 +63,7 @@ public class NMvnCliTest {
         Assert.assertEquals(0, scanCode);
 
         // Run bump with --dry
-        int bumpCode = cli.run(new String[]{"bump", "--root", root.toString(), "-a", "com.cli:mod1=1.1.0-SNAPSHOT", "--dry"}, false);
+        int bumpCode = cli.run(new String[]{"bump", "--root", root.toString(), "-a", "com.cli:mod1=1.0.0.0", "--dry"}, false);
         Assert.assertEquals(0, bumpCode);
 
         // Dry-run should not modify files on disk
@@ -71,15 +71,15 @@ public class NMvnCliTest {
         Assert.assertTrue(mod1Content.contains("<version>1.0.0-SNAPSHOT</version>"));
 
         // Run bump default (non-dry, applies changes)
-        int applyCode = cli.run(new String[]{"bump", "--root", root.toString(), "-a", "com.cli:mod1=1.1.0-SNAPSHOT"}, false);
+        int applyCode = cli.run(new String[]{"bump", "--root", root.toString(), "-a", "com.cli:mod1=1.0.0.0"}, false);
         Assert.assertEquals(0, applyCode);
 
         // Now files on disk should be updated
         String mod1Updated = mod1.resolve("pom.xml").readString();
-        Assert.assertTrue(mod1Updated.contains("<version>1.1.0-SNAPSHOT</version>"));
+        Assert.assertTrue(mod1Updated.contains("<version>1.0.0.0</version>"));
 
         String mod2Updated = mod2.resolve("pom.xml").readString();
-        Assert.assertTrue(mod2Updated.contains("<version>1.1.0-SNAPSHOT</version>"));
+        Assert.assertTrue(mod2Updated.contains("<version>1.0.0.0</version>"));
     }
 
     @Test
@@ -326,19 +326,19 @@ public class NMvnCliTest {
         MvnVersionCli cli = new MvnVersionCli(session);
 
         // Test -a with '#' delimiter
-        int c1 = cli.run(new String[]{"bump", "--root", root.toString(), "-a", "com.cli:mod1#1.1.0-SNAPSHOT", "--dry"}, false);
+        int c1 = cli.run(new String[]{"bump", "--root", root.toString(), "-a", "com.cli:mod1#1.0.0.0", "--dry"}, false);
         Assert.assertEquals(0, c1);
 
         // Test -a= with '#' delimiter
-        int c2 = cli.run(new String[]{"bump", "--root", root.toString(), "-a=com.cli:mod1#1.1.0-SNAPSHOT", "--dry"}, false);
+        int c2 = cli.run(new String[]{"bump", "--root", root.toString(), "-a=com.cli:mod1#1.0.0.0", "--dry"}, false);
         Assert.assertEquals(0, c2);
 
         // Test --artifact= with '#' delimiter
-        int c3 = cli.run(new String[]{"bump", "--root", root.toString(), "--artifact=com.cli:mod1#1.1.0-SNAPSHOT", "--dry"}, false);
+        int c3 = cli.run(new String[]{"bump", "--root", root.toString(), "--artifact=com.cli:mod1#1.0.0.0", "--dry"}, false);
         Assert.assertEquals(0, c3);
 
         // Test -a= with '=' delimiter
-        int c4 = cli.run(new String[]{"bump", "--root", root.toString(), "-a=com.cli:mod1=1.1.0-SNAPSHOT", "--dry"}, false);
+        int c4 = cli.run(new String[]{"bump", "--root", root.toString(), "-a=com.cli:mod1=1.0.0.0", "--dry"}, false);
         Assert.assertEquals(0, c4);
 
         // Apply using -a=com.cli:mod1#1.2.0-SNAPSHOT
@@ -398,23 +398,23 @@ public class NMvnCliTest {
         NSession session = NSession.of();
         MvnVersionCli cli = new MvnVersionCli(session);
 
-        // Update mod-a to 1.1.0-SNAPSHOT
-        int code = cli.run(new String[]{"update", "--root", root.toString(), "-a", "com.cli:mod-a#1.1.0-SNAPSHOT"}, false);
+        // Update mod-a to 1.0.0.0
+        int code = cli.run(new String[]{"update", "--root", root.toString(), "-a", "com.cli:mod-a#1.0.0.0"}, false);
         Assert.assertEquals(0, code);
 
-        // 1. mod-a should be 1.1.0-SNAPSHOT
+        // 1. mod-a should be 1.0.0.0
         String aContent = modA.resolve("pom.xml").readString();
-        Assert.assertTrue(aContent.contains("<version>1.1.0-SNAPSHOT</version>"));
+        Assert.assertTrue(aContent.contains("<version>1.0.0.0</version>"));
 
         // 2. mod-b was release 2.0.0, so it MUST bump to snapshot (2.1.0-SNAPSHOT by default minor increment) because POM was modified
         String bContent = modB.resolve("pom.xml").readString();
         Assert.assertTrue("mod-b version should be bumped to 2.1.0-SNAPSHOT", bContent.contains("<version>2.1.0-SNAPSHOT</version>"));
-        Assert.assertTrue("mod-b dependency on mod-a should be updated to 1.1.0-SNAPSHOT", bContent.contains("<version>1.1.0-SNAPSHOT</version>"));
+        Assert.assertTrue("mod-b dependency on mod-a should be updated to 1.0.0.0", bContent.contains("<version>1.0.0.0</version>"));
 
         // 3. mod-c was already snapshot 3.0.0-SNAPSHOT, so its version should stay 3.0.0-SNAPSHOT
         String cContent = modC.resolve("pom.xml").readString();
         Assert.assertTrue("mod-c own version should remain 3.0.0-SNAPSHOT", cContent.contains("<artifactId>mod-c</artifactId>\n  <version>3.0.0-SNAPSHOT</version>"));
-        Assert.assertTrue("mod-c dependency on mod-a should be updated to 1.1.0-SNAPSHOT", cContent.contains("<version>1.1.0-SNAPSHOT</version>"));
+        Assert.assertTrue("mod-c dependency on mod-a should be updated to 1.0.0.0", cContent.contains("<version>1.0.0.0</version>"));
     }
 
     @Test

@@ -13,7 +13,7 @@ manage multi-project maven worksets and versions
 ##) OPTIONS:
 
     ```sh -a <GA[#VER]> | -a=<GA[#VER]> | --artifact=<GA[#VER]>```
-        specify target artifact and optional version using standard Nuts '#' delimiter (e.g. `com.example:mod1#1.1.0-SNAPSHOT`) or '=' delimiter (`com.example:mod1=1.1.0-SNAPSHOT`). For bump, omitting version auto-increments using the selected or default policy. Can be specified multiple times.
+        specify target artifact and optional version using standard Nuts '#' delimiter (e.g. `com.example:mod1#1.0.0.0`) or '=' delimiter (`com.example:mod1=1.0.0.0`). For bump, omitting version auto-increments using the selected or default policy. Can be specified multiple times.
 
     ```sh --patch | --minor | --major```
         increment target artifact(s) or all workspace artifacts by patch, minor, or major.

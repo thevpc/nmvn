@@ -162,7 +162,7 @@ public class NMvnLibTest {
         config.setRoots(Collections.singletonList(root.toString()));
 
         List<BumpInstruction> bumps = Collections.singletonList(
-                new BumpInstruction("com.common", "lib-core", "1.1.0-SNAPSHOT")
+                new BumpInstruction("com.common", "lib-core", "1.0.0.0")
         );
 
         BumpResult result = service.bump(config, root, bumps, false, true);
@@ -170,7 +170,7 @@ public class NMvnLibTest {
 
         // Check content of alias-project pom.xml on disk
         String projContent = pDir.resolve("pom.xml").readString();
-        Assert.assertTrue(projContent.contains("<lib.version>1.1.0-SNAPSHOT</lib.version>"));
+        Assert.assertTrue(projContent.contains("<lib.version>1.0.0.0</lib.version>"));
     }
 
     @Test
@@ -350,7 +350,7 @@ public class NMvnLibTest {
         config.setRoots(Collections.singletonList(root.toString()));
 
         List<BumpInstruction> bumps = Collections.singletonList(
-                new BumpInstruction("com.app", "my-app", "1.1.0-SNAPSHOT")
+                new BumpInstruction("com.app", "my-app", "1.0.0.0")
         );
 
         // Dry run: apply = false
@@ -365,7 +365,7 @@ public class NMvnLibTest {
         // Now apply = true
         service.bump(config, root, bumps, false, true);
         String updatedOnDisk = pom.readString();
-        Assert.assertTrue(updatedOnDisk.contains("<version>1.1.0-SNAPSHOT</version>"));
+        Assert.assertTrue(updatedOnDisk.contains("<version>1.0.0.0</version>"));
     }
 
     @Test
@@ -459,7 +459,7 @@ public class NMvnLibTest {
         config.setRoots(Collections.singletonList(root.toString()));
 
         List<BumpInstruction> bumps = Collections.singletonList(
-                new BumpInstruction("com.custom", "custom-formatting", "1.1.0-SNAPSHOT")
+                new BumpInstruction("com.custom", "custom-formatting", "1.0.0.0")
         );
 
         service.bump(config, root, bumps, false, true);
@@ -467,7 +467,7 @@ public class NMvnLibTest {
         String updated = pom.readString();
 
         // Verify version changed
-        Assert.assertTrue(updated.contains("<version>1.1.0-SNAPSHOT</version>"));
+        Assert.assertTrue(updated.contains("<version>1.0.0.0</version>"));
 
         // Verify comments preserved
         Assert.assertTrue(updated.contains("<!-- Top license comment header with custom layout -->"));
@@ -482,7 +482,7 @@ public class NMvnLibTest {
         Assert.assertTrue(updated.contains("       <dep.version>1.0.0-SNAPSHOT</dep.version>  <!-- trailing comment -->"));
 
         // Verify that the ONLY difference is the exact version tag changed
-        String expected = original.replace("<version>1.0.0-SNAPSHOT</version>", "<version>1.1.0-SNAPSHOT</version>");
+        String expected = original.replace("<version>1.0.0-SNAPSHOT</version>", "<version>1.0.0.0</version>");
         Assert.assertEquals(expected, updated);
     }
 
@@ -530,14 +530,14 @@ public class NMvnLibTest {
         config.setRoots(Collections.singletonList(root.toString()));
 
         List<BumpInstruction> bumps = Collections.singletonList(
-                new BumpInstruction("com.custom", "inner-lib", "1.1.0-SNAPSHOT")
+                new BumpInstruction("com.custom", "inner-lib", "1.0.0.0")
         );
 
         service.bump(config, root, bumps, false, true);
 
         String updated = pom.readString();
 
-        Assert.assertTrue(updated.contains("1.1.0-SNAPSHOT"));
+        Assert.assertTrue(updated.contains("1.0.0.0"));
         Assert.assertTrue(updated.contains("<!-- inner leading comment -->"));
         Assert.assertTrue(updated.contains("<!-- inner trailing comment -->"));
 
@@ -1042,7 +1042,7 @@ public class NMvnLibTest {
                 "  <parent>\n" +
                 "    <groupId>org.springframework.boot</groupId>\n" +
                 "    <artifactId>spring-boot-starter-parent</artifactId>\n" +
-                "    <version>3.3.5</version>\n" +
+                "    <version>3.4.4</version>\n" +
                 "  </parent>\n" +
                 "  <groupId>net.thevpc.test</groupId>\n" +
                 "  <artifactId>spring-test-app</artifactId>\n" +
