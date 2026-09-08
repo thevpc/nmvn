@@ -1,0 +1,85 @@
+##) SYNOPSIS:
+==nmvn== **\<command-options\>**
+manage multi-project maven worksets and versions
+
+==nmvn== [**--version** <MVN_VERSION>] [{{args...}}]
+==nmvn== **workset** [**list**|**path**|**get**|**set**|**add-root**|**remove-root**|**scan**|**edit**] [{{options...}}]
+==nmvn== **version scan**    [**--workset** <FILE>] [**-j**|**--json**]
+==nmvn== **version bump**    [**--workset** <FILE>] [**--dry**] [**--cascade-references-only**|**--cascade-versions**] [**-a** <GA#VER>]...
+==nmvn== **version release** [**--workset** <FILE>] [**--dry**] [**--strict**] [**-a** <GA#VER>]...
+==nmvn== **version check**   [**--workset** <FILE>] [**--fail-on-warning**] [**-j**|**--json**]
+
+##) OPTIONS:
+
+    ```sh -a <GA#VER> | -a=<GA#VER> | --artifact=<GA#VER>```
+        specify target artifact and version using standard Nuts '#' delimiter (e.g. `com.example:mod1#1.1.0-SNAPSHOT`) or '=' delimiter (`com.example:mod1=1.1.0-SNAPSHOT`). Can be specified multiple times.
+
+    ```sh --cascade-references-only```
+        (default) update dependency, parent, and property references in consuming modules without changing their own project versions.
+
+    ```sh --cascade-versions```
+        cascade version bump through the dependency graph: updates references AND increments the project version of all direct and indirect dependents.
+
+    ```sh --dry | -D```
+        preview unified diff of changes without modifying files on disk. Default is non-dry (applies changes).
+
+    ```sh --strict```
+        in release mode, fail if any unmanaged external snapshot dependency is detected.
+
+    ```sh -j | --json```
+        output machine-readable JSON for CI/CD pipelines.
+
+    ```sh --fail-on-warning```
+        in check mode, fail with exit code 1 if any warnings are detected.
+
+##) WORKFLOWS:
+
+    **1. Start New Development Cycle (Post-Release Bump with Cascading Versions)**
+    Bump released module `A` to snapshot and cascade to dependent modules `B`:
+    ```sh nmvn version bump -a com.example:A#1.0.1-SNAPSHOT --cascade-versions --dry```
+    ```sh nmvn version bump -a=com.example:A#1.0.1-SNAPSHOT --cascade-versions```
+
+    **2. Active Development Bump (Align References Only)**
+    When modules are already snapshots, align references without bumping downstream versions:
+    ```sh nmvn version bump -a com.example:A#1.1.0-SNAPSHOT```
+    ```sh nmvn version bump -a=com.example:A#1.1.0-SNAPSHOT --cascade-references-only```
+
+    **3. Resolve Multi-Version Discrepancies**
+    Audit workspace and harmonize all referencing POMs to a single version:
+    ```sh nmvn version check```
+    ```sh nmvn version bump -a net.thevpc.hl:hadra-lang#0.1.1 --cascade-references-only```
+    ```sh nmvn version check```
+
+    **4. Synchronized / Lockstep Monorepo Bump**
+    Bump multiple modules together in a single command:
+    ```sh nmvn version bump -a com.example:core#2.0.0-SNAPSHOT -a com.example:client#2.0.0-SNAPSHOT```
+
+    **5. Upstream Parent or BOM Upgrade**
+    Update shared parent POM or BOM across child modules:
+    ```sh nmvn version bump -a com.example:company-parent#5.0.0 --cascade-references-only```
+
+    **6. Release Artifacts (Fix Snapshots)**
+    Strip -SNAPSHOT from all workspace artifacts and convert references to release:
+    ```sh nmvn version release --dry```
+    ```sh nmvn version release --strict```
+    ```sh nmvn version release -a com.example:core#1.0.0 -a com.example:client#1.0.0```
+
+##) EXAMPLES:
+
+```sh nmvn clean install```
+   maven clean install
+
+```sh nmvn workset add-root ../other-project --scan```
+   add a root folder to current workset and scan discovered artifacts
+
+```sh nmvn workset remove-root ../other-project --scan```
+   remove a root folder from current workset and rescan
+
+```sh nmvn workset list --recent```
+   list recent worksets
+
+```sh nmvn version scan```
+   scan and print multi-project dependency graph
+
+```sh nmvn version check```
+   audit workspace for version discrepancies, mixed snapshot/releases, and cycles

@@ -845,4 +845,241 @@ public class NMvnLibTest {
             nutsCfg.delete();
         }
     }
+
+    @Test
+    public void testScanSkipsTargetAndDistAtPomLevel() throws Exception {
+        NPath root = NPath.of(tempFolder.newFolder("scan-skip-target-dist"));
+        NPath warDir = root.resolve("app").resolve("nrepo-war");
+
+        // 1. Main module pom
+        createPom(warDir,
+                "<project>\n" +
+                "  <modelVersion>4.0.0</modelVersion>\n" +
+                "  <groupId>net.thevpc.nrepo</groupId>\n" +
+                "  <artifactId>nrepo-war</artifactId>\n" +
+                "  <version>1.0.0</version>\n" +
+                "</project>");
+
+        // 2. Build artifact under dist (e.g. exploded war)
+        NPath distExplodedPom = warDir.resolve("dist")
+                .resolve("nrepo-exploded")
+                .resolve("META-INF")
+                .resolve("maven")
+                .resolve("net.thevpc.nrepo")
+                .resolve("nrepo-war");
+        createPom(distExplodedPom,
+                "<project>\n" +
+                "  <modelVersion>4.0.0</modelVersion>\n" +
+                "  <groupId>net.thevpc.nrepo</groupId>\n" +
+                "  <artifactId>nrepo-war</artifactId>\n" +
+                "  <version>1.0.0</version>\n" +
+                "</project>");
+
+        // 3. Build artifact under target
+        NPath targetExplodedPom = warDir.resolve("target")
+                .resolve("classes")
+                .resolve("META-INF")
+                .resolve("maven")
+                .resolve("net.thevpc.nrepo")
+                .resolve("nrepo-war");
+        createPom(targetExplodedPom,
+                "<project>\n" +
+                "  <modelVersion>4.0.0</modelVersion>\n" +
+                "  <groupId>net.thevpc.nrepo</groupId>\n" +
+                "  <artifactId>nrepo-war</artifactId>\n" +
+                "  <version>1.0.0</version>\n" +
+                "</project>");
+
+        // 4. Another sibling module
+        NPath otherDir = root.resolve("core").resolve("nrepo-core");
+        createPom(otherDir,
+                "<project>\n" +
+                "  <modelVersion>4.0.0</modelVersion>\n" +
+                "  <groupId>net.thevpc.nrepo</groupId>\n" +
+                "  <artifactId>nrepo-core</artifactId>\n" +
+                "  <version>1.0.0</version>\n" +
+                "</project>");
+
+        NMvnConfig config = new NMvnConfig();
+        // Clear default excludes to prove target and dist at pom level are skipped inherently
+        config.setExcludes(Collections.emptyList());
+
+        ScanResult scanResult = service.scan(config, root);
+        Assert.assertEquals(2, scanResult.getArtifacts().size());
+        Assert.assertTrue(scanResult.getArtifacts().containsKey(NId.of("net.thevpc.nrepo:nrepo-war")));
+        Assert.assertTrue(scanResult.getArtifacts().containsKey(NId.of("net.thevpc.nrepo:nrepo-core")));
+        Assert.assertEquals(warDir.resolve("pom.xml").toAbsolute().normalize(),
+                scanResult.getArtifacts().get(NId.of("net.thevpc.nrepo:nrepo-war")).getPath().toAbsolute().normalize());
+    }
+
+    @Test
+    public void testDependencyManagementAndBomVersionResolution() throws Exception {
+        NPath root = NPath.of(tempFolder.newFolder("bom-dep-mgmt-test"));
+
+        // 1. A BOM module
+        NPath bomDir = root.resolve("my-bom");
+        createPom(bomDir,
+                "<project>\n" +
+                "  <modelVersion>4.0.0</modelVersion>\n" +
+                "  <groupId>com.test</groupId>\n" +
+                "  <artifactId>my-bom</artifactId>\n" +
+                "  <version>1.0.0</version>\n" +
+                "  <packaging>pom</packaging>\n" +
+                "  <properties>\n" +
+                "    <lib-a.version>2.5.0</lib-a.version>\n" +
+                "  </properties>\n" +
+                "  <dependencyManagement>\n" +
+                "    <dependencies>\n" +
+                "      <dependency>\n" +
+                "        <groupId>com.external</groupId>\n" +
+                "        <artifactId>lib-a</artifactId>\n" +
+                "        <version>${lib-a.version}</version>\n" +
+                "      </dependency>\n" +
+                "    </dependencies>\n" +
+                "  </dependencyManagement>\n" +
+                "</project>");
+
+        // 2. A parent POM importing my-bom and declaring its own dependencyManagement
+        NPath parentDir = root.resolve("parent");
+        createPom(parentDir,
+                "<project>\n" +
+                "  <modelVersion>4.0.0</modelVersion>\n" +
+                "  <groupId>com.test</groupId>\n" +
+                "  <artifactId>parent-pom</artifactId>\n" +
+                "  <version>1.0.0</version>\n" +
+                "  <packaging>pom</packaging>\n" +
+                "  <dependencyManagement>\n" +
+                "    <dependencies>\n" +
+                "      <dependency>\n" +
+                "        <groupId>com.test</groupId>\n" +
+                "        <artifactId>my-bom</artifactId>\n" +
+                "        <version>1.0.0</version>\n" +
+                "        <type>pom</type>\n" +
+                "        <scope>import</scope>\n" +
+                "      </dependency>\n" +
+                "      <dependency>\n" +
+                "        <groupId>com.external</groupId>\n" +
+                "        <artifactId>lib-b</artifactId>\n" +
+                "        <version>1.2.0</version>\n" +
+                "      </dependency>\n" +
+                "    </dependencies>\n" +
+                "  </dependencyManagement>\n" +
+                "</project>");
+
+        // 3. Child module with direct dependencies having no declared version
+        NPath childDir = root.resolve("child");
+        createPom(childDir,
+                "<project>\n" +
+                "  <modelVersion>4.0.0</modelVersion>\n" +
+                "  <parent>\n" +
+                "    <groupId>com.test</groupId>\n" +
+                "    <artifactId>parent-pom</artifactId>\n" +
+                "    <version>1.0.0</version>\n" +
+                "  </parent>\n" +
+                "  <artifactId>child-app</artifactId>\n" +
+                "  <dependencies>\n" +
+                "    <!-- Managed by imported my-bom -->\n" +
+                "    <dependency>\n" +
+                "      <groupId>com.external</groupId>\n" +
+                "      <artifactId>lib-a</artifactId>\n" +
+                "    </dependency>\n" +
+                "    <!-- Managed by parent dependencyManagement -->\n" +
+                "    <dependency>\n" +
+                "      <groupId>com.external</groupId>\n" +
+                "      <artifactId>lib-b</artifactId>\n" +
+                "    </dependency>\n" +
+                "    <!-- Truly missing version -->\n" +
+                "    <dependency>\n" +
+                "      <groupId>com.external</groupId>\n" +
+                "      <artifactId>lib-unmanaged</artifactId>\n" +
+                "    </dependency>\n" +
+                "  </dependencies>\n" +
+                "</project>");
+
+        NMvnConfig config = new NMvnConfig();
+        ScanResult scanResult = service.scan(config, root);
+
+        PomArtifact childArtifact = scanResult.getArtifacts().get(NId.of("com.test:child-app"));
+        Assert.assertNotNull(childArtifact);
+
+        PomDependency depA = childArtifact.getDependencies().stream()
+                .filter(d -> "lib-a".equals(d.getArtifactId())).findFirst().orElse(null);
+        Assert.assertNotNull(depA);
+        Assert.assertEquals("2.5.0", depA.getResolvedVersion());
+
+        PomDependency depB = childArtifact.getDependencies().stream()
+                .filter(d -> "lib-b".equals(d.getArtifactId())).findFirst().orElse(null);
+        Assert.assertNotNull(depB);
+        Assert.assertEquals("1.2.0", depB.getResolvedVersion());
+
+        PomDependency depUnmanaged = childArtifact.getDependencies().stream()
+                .filter(d -> "lib-unmanaged".equals(d.getArtifactId())).findFirst().orElse(null);
+        Assert.assertNotNull(depUnmanaged);
+        Assert.assertNull(depUnmanaged.getResolvedVersion());
+
+        // Check diagnostics
+        DiagnosticReport report = service.check(config, root);
+        long missingCount = report.getIssues().stream()
+                .filter(i -> i.getRule() == DiagnosticRule.MISSING_VERSION)
+                .count();
+        Assert.assertEquals(1, missingCount);
+
+        DiagnosticIssue issue = report.getIssues().stream()
+                .filter(i -> i.getRule() == DiagnosticRule.MISSING_VERSION)
+                .findFirst().orElse(null);
+        Assert.assertNotNull(issue);
+        Assert.assertEquals(NId.of("com.external:lib-unmanaged"), issue.getTargetId());
+    }
+
+    @Test
+    public void testExternalSpringBootBomResolution() throws Exception {
+        NPath root = NPath.of(tempFolder.newFolder("spring-boot-bom-test"));
+        NPath appDir = root.resolve("app");
+
+        createPom(appDir,
+                "<project>\n" +
+                "  <modelVersion>4.0.0</modelVersion>\n" +
+                "  <parent>\n" +
+                "    <groupId>org.springframework.boot</groupId>\n" +
+                "    <artifactId>spring-boot-starter-parent</artifactId>\n" +
+                "    <version>3.3.5</version>\n" +
+                "  </parent>\n" +
+                "  <groupId>net.thevpc.test</groupId>\n" +
+                "  <artifactId>spring-test-app</artifactId>\n" +
+                "  <version>1.0.0</version>\n" +
+                "  <dependencies>\n" +
+                "    <dependency>\n" +
+                "      <groupId>org.springframework.security</groupId>\n" +
+                "      <artifactId>spring-security-test</artifactId>\n" +
+                "      <scope>test</scope>\n" +
+                "    </dependency>\n" +
+                "    <dependency>\n" +
+                "      <groupId>org.postgresql</groupId>\n" +
+                "      <artifactId>postgresql</artifactId>\n" +
+                "    </dependency>\n" +
+                "  </dependencies>\n" +
+                "</project>");
+
+        NMvnConfig config = new NMvnConfig();
+        ScanResult scanResult = service.scan(config, root);
+
+        PomArtifact app = scanResult.getArtifacts().get(NId.of("net.thevpc.test:spring-test-app"));
+        Assert.assertNotNull(app);
+
+        PomDependency secDep = app.getDependencies().stream()
+                .filter(d -> "spring-security-test".equals(d.getArtifactId())).findFirst().orElse(null);
+        Assert.assertNotNull(secDep);
+        Assert.assertEquals("6.3.4", secDep.getResolvedVersion());
+
+        PomDependency pgDep = app.getDependencies().stream()
+                .filter(d -> "postgresql".equals(d.getArtifactId())).findFirst().orElse(null);
+        Assert.assertNotNull(pgDep);
+        Assert.assertEquals("42.7.4", pgDep.getResolvedVersion());
+
+        DiagnosticReport report = service.check(config, root);
+        long missingCount = report.getIssues().stream()
+                .filter(i -> i.getRule() == DiagnosticRule.MISSING_VERSION)
+                .count();
+        Assert.assertEquals(0, missingCount);
+    }
 }

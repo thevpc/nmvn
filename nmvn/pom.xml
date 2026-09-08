@@ -19,10 +19,10 @@
             /Development
             /Settings/PackageManager/Maven
         </nuts.categories>
-        <resolverVersion>1.1.0</resolverVersion>
-        <wagonVersion>3.3.2</wagonVersion>
+        <resolverVersion>1.4.1</resolverVersion>
+        <wagonVersion>3.3.4</wagonVersion>
         <sisuInjectVersion>0.3.4</sisuInjectVersion>
-        <mavenMinimalVersion>3.5.4</mavenMinimalVersion>
+        <mavenMinimalVersion>3.6.3</mavenMinimalVersion>
     </properties>
     <scm>
         <connection>scm:git:git://github.com/thevpc/nuts.git</connection>
@@ -88,7 +88,7 @@
         <!--            <artifactId>maven-downloader-plugin</artifactId>-->
         <!--            <version>1.0</version>-->
         <!--        </dependency>-->
-        <dependency><groupId>org.codehaus.plexus</groupId><artifactId>plexus-utils</artifactId><version>3.2.0</version></dependency>
+        <dependency><groupId>org.codehaus.plexus</groupId><artifactId>plexus-utils</artifactId><version>3.2.1</version></dependency>
 
 
         <dependency><groupId>org.codehaus.plexus</groupId><artifactId>plexus-cipher</artifactId><version>1.8</version></dependency>

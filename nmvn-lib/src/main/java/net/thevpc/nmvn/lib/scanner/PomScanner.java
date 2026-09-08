@@ -52,6 +52,9 @@ public class PomScanner {
             Files.walkFileTree(rootPath, new SimpleFileVisitor<Path>() {
                 @Override
                 public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                    if (!dir.equals(rootPath) && isTargetOrDistAtPomLevel(dir)) {
+                        return FileVisitResult.SKIP_SUBTREE;
+                    }
                     Path rel = rootPath.relativize(dir);
                     if (isExcluded(rel, matchers)) {
                         return FileVisitResult.SKIP_SUBTREE;
@@ -62,6 +65,9 @@ public class PomScanner {
                 @Override
                 public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
                     if ("pom.xml".equals(file.getFileName().toString())) {
+                        if (isInsideTargetOrDistAtPomLevel(file, rootPath)) {
+                            return FileVisitResult.CONTINUE;
+                        }
                         Path rel = rootPath.relativize(file);
                         if (!isExcluded(rel, matchers)) {
                             try {
@@ -97,6 +103,31 @@ public class PomScanner {
         PropertyResolver.resolveAll(result);
 
         return result;
+    }
+
+    private boolean isTargetOrDistAtPomLevel(Path dir) {
+        Path fileName = dir.getFileName();
+        if (fileName != null) {
+            String name = fileName.toString();
+            if ("target".equalsIgnoreCase(name) || "dist".equalsIgnoreCase(name)) {
+                Path parent = dir.getParent();
+                if (parent != null && Files.isRegularFile(parent.resolve("pom.xml"))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean isInsideTargetOrDistAtPomLevel(Path path, Path rootPath) {
+        Path curr = path.getParent();
+        while (curr != null && !curr.equals(rootPath)) {
+            if (isTargetOrDistAtPomLevel(curr)) {
+                return true;
+            }
+            curr = curr.getParent();
+        }
+        return false;
     }
 
     private boolean isExcluded(Path path, List<PathMatcher> matchers) {

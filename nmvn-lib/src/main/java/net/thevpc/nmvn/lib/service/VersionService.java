@@ -41,6 +41,12 @@ public class VersionService {
 
     public BumpResult bump(NMvnConfig config, NPath workingDir, List<BumpInstruction> explicitBumps,
                            Boolean cascadeVersionsOverride, boolean apply) throws IOException {
+        return bump(config, workingDir, explicitBumps, null, cascadeVersionsOverride, false, apply);
+    }
+
+    public BumpResult bump(NMvnConfig config, NPath workingDir, List<BumpInstruction> explicitBumps,
+                           BumpPolicy.IncrementType incrementOverride,
+                           Boolean cascadeVersionsOverride, boolean force, boolean apply) throws IOException {
         ScanResult scanResult = scan(config, workingDir);
         Map<NId, PomArtifact> artifacts = scanResult.getArtifacts();
         MavenDependencyGraph graph = scanResult.getGraph();
@@ -48,21 +54,50 @@ public class VersionService {
         boolean cascadeVersions = cascadeVersionsOverride != null ? cascadeVersionsOverride
                 : config.getBumpPolicy().getCascadePolicy() == BumpPolicy.CascadePolicy.CASCADE_VERSIONS;
 
-        // Combine instructions from config + explicit CLI instructions
-        Map<NId, String> targetVersions = new LinkedHashMap<>();
+        BumpPolicy.IncrementType defaultInc = incrementOverride != null ? incrementOverride : config.getBumpPolicy().getDefaultIncrement();
+
+        // Target artifacts: if explicitBumps is empty or null, target all workspace artifacts
+        Map<NId, BumpInstruction> bumpMap = new LinkedHashMap<>();
         if (config.getInstructions() != null) {
             for (BumpInstruction inst : config.getInstructions()) {
-                targetVersions.put(inst.toGa(), inst.getToVersion());
+                bumpMap.put(inst.toGa(), inst);
             }
         }
-        if (explicitBumps != null) {
+        if (explicitBumps != null && !explicitBumps.isEmpty()) {
             for (BumpInstruction inst : explicitBumps) {
-                targetVersions.put(inst.toGa(), inst.getToVersion());
+                bumpMap.put(inst.toGa(), inst);
+            }
+        } else if (bumpMap.isEmpty()) {
+            for (NId ga : artifacts.keySet()) {
+                bumpMap.put(ga, new BumpInstruction(ga.groupId(), ga.artifactId(), null));
             }
         }
 
-        if (targetVersions.isEmpty()) {
-            return new BumpResult(Collections.emptyList(), Collections.emptyMap());
+        Map<NId, String> targetVersions = new LinkedHashMap<>();
+        for (Map.Entry<NId, BumpInstruction> entry : bumpMap.entrySet()) {
+            NId ga = entry.getKey();
+            BumpInstruction inst = entry.getValue();
+            PomArtifact artifact = artifacts.get(ga);
+            String currentVer = artifact != null ? artifact.getResolvedVersion() : null;
+            String toVer = inst.getToVersion();
+
+            if (toVer != null && !BumpPolicy.IncrementType.isIncrementKeyword(toVer)) {
+                // Explicit version passed
+                targetVersions.put(ga, toVer);
+            } else {
+                // Auto-increment
+                BumpPolicy.IncrementType inc = (toVer != null && BumpPolicy.IncrementType.isIncrementKeyword(toVer))
+                        ? BumpPolicy.IncrementType.parse(toVer)
+                        : defaultInc;
+
+                boolean isSnapshot = config.getBumpPolicy().isSnapshot(currentVer);
+                if (isSnapshot && !force) {
+                    // Already a snapshot: do not advance unless forced
+                } else {
+                    String nextVer = config.getBumpPolicy().bumpVersion(currentVer, inc);
+                    targetVersions.put(ga, nextVer);
+                }
+            }
         }
 
         // Cascade to dependents
@@ -74,14 +109,29 @@ public class VersionService {
             Set<NId> dependents = graph.getDirectDependents(currGa);
 
             for (NId depGa : dependents) {
-                if (cascadeVersions && !targetVersions.containsKey(depGa)) {
+                if (!targetVersions.containsKey(depGa)) {
                     PomArtifact depArtifact = artifacts.get(depGa);
                     if (depArtifact != null) {
                         String currentVer = depArtifact.getResolvedVersion();
-                        String nextVer = config.getBumpPolicy().bumpVersion(currentVer, config.getBumpPolicy().getDefaultIncrement());
-                        targetVersions.put(depGa, nextVer);
-                        if (visited.add(depGa)) {
-                            dirtyQueue.add(depGa);
+                        boolean isSnapshot = config.getBumpPolicy().isSnapshot(currentVer);
+
+                        if (cascadeVersions) {
+                            if (!isSnapshot || force) {
+                                String nextVer = config.getBumpPolicy().bumpVersion(currentVer, defaultInc);
+                                targetVersions.put(depGa, nextVer);
+                                if (visited.add(depGa)) {
+                                    dirtyQueue.add(depGa);
+                                }
+                            }
+                        } else {
+                            // Release immutability: if release, must bump to snapshot
+                            if (!isSnapshot) {
+                                String nextVer = config.getBumpPolicy().bumpVersion(currentVer, config.getBumpPolicy().getDefaultIncrement());
+                                targetVersions.put(depGa, nextVer);
+                                if (visited.add(depGa)) {
+                                    dirtyQueue.add(depGa);
+                                }
+                            }
                         }
                     }
                 }
@@ -89,6 +139,59 @@ public class VersionService {
         }
 
         // Apply modifications in memory
+        List<PomChange> changes = applyModifications(artifacts, targetVersions);
+
+        if (apply) {
+            applyChangesToDisk(changes);
+            recordHistory(config, workingDir, targetVersions);
+        }
+
+        return new BumpResult(changes, targetVersions);
+    }
+
+    public BumpResult update(NMvnConfig config, NPath workingDir, Map<NId, String> explicitUpdates,
+                             boolean apply) throws IOException {
+        ScanResult scanResult = scan(config, workingDir);
+        Map<NId, PomArtifact> artifacts = scanResult.getArtifacts();
+        MavenDependencyGraph graph = scanResult.getGraph();
+
+        Map<NId, String> targetVersions = new LinkedHashMap<>();
+        if (explicitUpdates != null) {
+            targetVersions.putAll(explicitUpdates);
+        }
+
+        if (targetVersions.isEmpty()) {
+            return new BumpResult(Collections.emptyList(), Collections.emptyMap());
+        }
+
+        // Release Immutability Cascade:
+        // Any dependent whose POM is modified:
+        // - if already snapshot -> version is untouched (only dependency reference is updated)
+        // - if release (non-snapshot) -> must be bumped to snapshot
+        Queue<NId> dirtyQueue = new ArrayDeque<>(targetVersions.keySet());
+        Set<NId> visited = new HashSet<>(targetVersions.keySet());
+
+        while (!dirtyQueue.isEmpty()) {
+            NId currGa = dirtyQueue.poll();
+            Set<NId> dependents = graph.getDirectDependents(currGa);
+
+            for (NId depGa : dependents) {
+                if (!targetVersions.containsKey(depGa)) {
+                    PomArtifact depArtifact = artifacts.get(depGa);
+                    if (depArtifact != null) {
+                        String currentVer = depArtifact.getResolvedVersion();
+                        if (!config.getBumpPolicy().isSnapshot(currentVer)) {
+                            String nextVer = config.getBumpPolicy().bumpVersion(currentVer, config.getBumpPolicy().getDefaultIncrement());
+                            targetVersions.put(depGa, nextVer);
+                            if (visited.add(depGa)) {
+                                dirtyQueue.add(depGa);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         List<PomChange> changes = applyModifications(artifacts, targetVersions);
 
         if (apply) {

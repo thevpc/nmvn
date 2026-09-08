@@ -17,6 +17,15 @@ public class PomArtifact {
     private final List<PomDependency> pluginDependencies = new ArrayList<>();
     private final List<String> modules = new ArrayList<>();
     private String versionPropertyName;
+    private boolean hasUnresolvedParentOrBom;
+
+    public boolean hasUnresolvedParentOrBom() {
+        return hasUnresolvedParentOrBom;
+    }
+
+    public void setHasUnresolvedParentOrBom(boolean hasUnresolvedParentOrBom) {
+        this.hasUnresolvedParentOrBom = hasUnresolvedParentOrBom;
+    }
 
     public PomArtifact(NId id, NId parentId, NPath path) {
         this.id = Objects.requireNonNull(id, "id cannot be null");

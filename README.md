@@ -57,7 +57,7 @@ A **Workset** is a collection of directory roots (local repositories, submodules
 - Only the specific `<version>` tag or `<properties><foo.version>` tag is targeted.
 - Retains all original whitespace, indentation, XML declarations, and formatting.
 - **Preserves all comments**, including trailing comments inside tag bodies (e.g. `<dep.version>1.0.0-SNAPSHOT<!-- internal --> </dep.version>`).
-- Provides unified diffs in `--dry-run` mode before any byte is written to disk.
+- Provides unified diffs in dry-run mode (`--dry`) before any byte is written to disk.
 
 ### 3. Property-Indirection & BOM Resolution
 
@@ -172,31 +172,80 @@ nmvn version check --fail-on-warning
 nmvn version check --json
 ```
 
-#### 3. Bump Versions
+#### 3. Bump Versions (`nmvn version bump`)
+
+Artifact coordinates can be specified using either the Nuts standard `#` delimiter or `=`:
+- `-a com.example:A#1.0.1-SNAPSHOT` or `-a=com.example:A#1.0.1-SNAPSHOT`
+- `-a com.example:A=1.0.1-SNAPSHOT` or `-a=com.example:A=1.0.1-SNAPSHOT`
+
+##### Common Workflows:
+
+**Workflow A: Starting a New Development Cycle (Post-Release Bump with Cascading Versions)**  
+When projects were released (`A: 1.0.0`, `B: 2.0.0`), starting work on `A` requires bumping `A` to snapshot (`1.0.1-SNAPSHOT`). Downstream project `B` which depends on `A` must also be bumped to a snapshot (`2.0.1-SNAPSHOT`) and updated to reference `A#1.0.1-SNAPSHOT`:
 ```bash
-# Dry-run: preview unified diff without modifying files
-nmvn version bump -a com.example:core-lib=2.0.0-SNAPSHOT --dry-run
+# Preview changes in dry-run mode
+nmvn version bump -a com.example:A#1.0.1-SNAPSHOT --cascade-versions --dry
 
-# Apply changes to POMs on disk
-nmvn version bump -a com.example:core-lib=2.0.0-SNAPSHOT --apply
-
-# Cascade references only (leaves dependent project versions unchanged)
-nmvn version bump -a com.example:core-lib=2.0.0-SNAPSHOT --cascade-references-only --apply
-
-# Cascade versions (also bumps versions of all direct and indirect dependents)
-nmvn version bump -a com.example:core-lib=2.0.0-SNAPSHOT --cascade-versions --apply
+# Apply to POM files on disk
+nmvn version bump -a com.example:A#1.0.1-SNAPSHOT --cascade-versions
+# (or with '=': nmvn version bump -a=com.example:A#1.0.1-SNAPSHOT --cascade-versions)
 ```
 
-#### 4. Release Artifacts (Fix Snapshots)
+**Workflow B: Active Development Bump (Aligning References Only)**  
+When projects are already in snapshot mode (`A#1.0.0-SNAPSHOT`, `B#2.0.0-SNAPSHOT`), bumping `A` to `1.1.0-SNAPSHOT` only needs to update `B`'s `<dependency>` tag. `B`'s own version remains `2.0.0-SNAPSHOT` (avoiding continuous version number inflation during day-to-day coding):
 ```bash
-# Dry-run release: strip -SNAPSHOT from all workspace artifacts
-nmvn version release --dry-run
+# Default behavior (cascade-references-only):
+nmvn version bump -a com.example:A#1.1.0-SNAPSHOT
 
-# Release specific artifacts with explicit target versions
-nmvn version release -a com.example:core-lib=1.0.0 -a com.example:client-lib=1.0.0 --apply
+# Explicit syntax:
+nmvn version bump -a=com.example:A#1.1.0-SNAPSHOT --cascade-references-only
+```
+
+**Workflow C: Resolving Multi-Version Discrepancies**  
+When `nmvn version check` detects multiple differing versions of a dependency across the workspace (e.g. `hadra-lang: 0.1.1 vs 0.1.0`), align all referencing POMs to use `0.1.1`:
+```bash
+# 1. Audit workspace
+nmvn version check
+
+# 2. Align all references across all workspace POMs to 0.1.1
+nmvn version bump -a net.thevpc.hl:hadra-lang#0.1.1 --cascade-references-only
+
+# 3. Verify clean status
+nmvn version check
+```
+
+**Workflow D: Synchronized / Lockstep Monorepo Bump**  
+Bump multiple modules in the workspace together:
+```bash
+nmvn version bump \
+  -a com.example:core#2.0.0-SNAPSHOT \
+  -a com.example:client#2.0.0-SNAPSHOT \
+  -a com.example:server#2.0.0-SNAPSHOT
+```
+
+**Workflow E: Upstream Parent or BOM Upgrade**  
+Update a shared `<parent>` or `<dependencyManagement>` BOM across child POMs:
+```bash
+nmvn version bump -a com.example:company-parent#5.0.0 --cascade-references-only
+```
+
+---
+
+#### 4. Release Artifacts (`nmvn version release`)
+
+Convert `-SNAPSHOT` artifacts to clean release versions and update all workspace references:
+```bash
+# Preview release diffs
+nmvn version release --dry
+
+# Automatically strip -SNAPSHOT from all workspace projects and convert references
+nmvn version release
 
 # Strict mode: fails if any unmanaged external snapshot dependency is detected
-nmvn version release --strict --apply
+nmvn version release --strict
+
+# Release specific artifacts with explicit target versions
+nmvn version release -a com.example:core-lib#1.0.0 -a com.example:client-lib#1.0.0
 ```
 
 ---

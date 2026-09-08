@@ -90,12 +90,15 @@ public class ArtifactChecker {
             for (PomDependency dep : artifact.getDependencies()) {
                 String ver = dep.getResolvedVersion();
                 if (ver == null || ver.trim().isEmpty()) {
+                    String msg = artifact.hasUnresolvedParentOrBom()
+                            ? "Direct dependency " + dep.toGa().shortName() + " has no declared version (parent or imported BOM could not be resolved locally)"
+                            : "Direct dependency " + dep.toGa().shortName() + " has no declared version and is not managed by dependencyManagement or BOM";
                     issues.add(new DiagnosticIssue(
                             DiagnosticRule.MISSING_VERSION,
                             DiagnosticSeverity.WARNING,
                             dep.toGa(),
                             artifact.getPath(),
-                            "Direct dependency " + dep.toGa().shortName() + " has no declared version"
+                            msg
                     ));
                 }
             }

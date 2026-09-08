@@ -16,6 +16,13 @@ public class BumpPolicy {
                     return MINOR;
             }
         }
+
+        public static boolean isIncrementKeyword(String str) {
+            if (str == null) return false;
+            String s = str.trim().toLowerCase();
+            if (s.startsWith("+")) s = s.substring(1).trim();
+            return "major".equals(s) || "minor".equals(s) || "patch".equals(s);
+        }
     }
 
     public enum CascadePolicy {
@@ -128,5 +135,10 @@ public class BumpPolicy {
             return currentVersion.substring(0, currentVersion.length() - "-SNAPSHOT".length());
         }
         return currentVersion;
+    }
+
+    public boolean isSnapshot(String version) {
+        if (version == null) return false;
+        return version.endsWith(snapshotSuffix) || version.endsWith("-SNAPSHOT");
     }
 }

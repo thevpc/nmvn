@@ -62,16 +62,16 @@ public class NMvnCliTest {
         int scanCode = cli.run(new String[]{"scan", "--root", root.toString()}, false);
         Assert.assertEquals(0, scanCode);
 
-        // Run bump dry-run
-        int bumpCode = cli.run(new String[]{"bump", "--root", root.toString(), "-a", "com.cli:mod1=1.1.0-SNAPSHOT", "--dry-run"}, false);
+        // Run bump with --dry
+        int bumpCode = cli.run(new String[]{"bump", "--root", root.toString(), "-a", "com.cli:mod1=1.1.0-SNAPSHOT", "--dry"}, false);
         Assert.assertEquals(0, bumpCode);
 
         // Dry-run should not modify files on disk
         String mod1Content = mod1.resolve("pom.xml").readString();
         Assert.assertTrue(mod1Content.contains("<version>1.0.0-SNAPSHOT</version>"));
 
-        // Run bump apply
-        int applyCode = cli.run(new String[]{"bump", "--root", root.toString(), "-a", "com.cli:mod1=1.1.0-SNAPSHOT", "--apply"}, false);
+        // Run bump default (non-dry, applies changes)
+        int applyCode = cli.run(new String[]{"bump", "--root", root.toString(), "-a", "com.cli:mod1=1.1.0-SNAPSHOT"}, false);
         Assert.assertEquals(0, applyCode);
 
         // Now files on disk should be updated
@@ -259,5 +259,91 @@ public class NMvnCliTest {
         String updatedContent = wsFile.readString();
         Assert.assertFalse(updatedContent.contains("mod1"));
         Assert.assertTrue(updatedContent.contains("mod2"));
+    }
+
+    @Test
+    public void testCliScanSkipsTargetAndDistAtPomLevel() throws Exception {
+        NPath root = NPath.of(temp.newFolder("cli-skip-test"));
+        NPath warDir = root.resolve("app").resolve("nrepo-war");
+
+        createPom(warDir,
+                "<project>\n" +
+                "  <modelVersion>4.0.0</modelVersion>\n" +
+                "  <groupId>net.thevpc.nrepo</groupId>\n" +
+                "  <artifactId>nrepo-war</artifactId>\n" +
+                "  <version>1.0.0</version>\n" +
+                "</project>");
+
+        NPath distExplodedPom = warDir.resolve("dist")
+                .resolve("nrepo-exploded")
+                .resolve("META-INF")
+                .resolve("maven")
+                .resolve("net.thevpc.nrepo")
+                .resolve("nrepo-war");
+        createPom(distExplodedPom,
+                "<project>\n" +
+                "  <modelVersion>4.0.0</modelVersion>\n" +
+                "  <groupId>net.thevpc.nrepo</groupId>\n" +
+                "  <artifactId>nrepo-war</artifactId>\n" +
+                "  <version>1.0.0</version>\n" +
+                "</project>");
+
+        NPath targetExplodedPom = warDir.resolve("target")
+                .resolve("classes")
+                .resolve("META-INF")
+                .resolve("maven")
+                .resolve("net.thevpc.nrepo")
+                .resolve("nrepo-war");
+        createPom(targetExplodedPom,
+                "<project>\n" +
+                "  <modelVersion>4.0.0</modelVersion>\n" +
+                "  <groupId>net.thevpc.nrepo</groupId>\n" +
+                "  <artifactId>nrepo-war</artifactId>\n" +
+                "  <version>1.0.0</version>\n" +
+                "</project>");
+
+        NSession session = NSession.of();
+        MvnVersionCli cli = new MvnVersionCli(session);
+
+        int scanCode = cli.run(new String[]{"scan", "--root", root.toString()}, false);
+        Assert.assertEquals(0, scanCode);
+    }
+
+    @Test
+    public void testCliArtifactOptionFormats() throws Exception {
+        NPath root = NPath.of(temp.newFolder("cli-format-test"));
+        NPath mod1 = root.resolve("mod1");
+
+        createPom(mod1,
+                "<project>\n" +
+                "  <modelVersion>4.0.0</modelVersion>\n" +
+                "  <groupId>com.cli</groupId>\n" +
+                "  <artifactId>mod1</artifactId>\n" +
+                "  <version>1.0.0-SNAPSHOT</version>\n" +
+                "</project>");
+
+        NSession session = NSession.of();
+        MvnVersionCli cli = new MvnVersionCli(session);
+
+        // Test -a with '#' delimiter
+        int c1 = cli.run(new String[]{"bump", "--root", root.toString(), "-a", "com.cli:mod1#1.1.0-SNAPSHOT", "--dry"}, false);
+        Assert.assertEquals(0, c1);
+
+        // Test -a= with '#' delimiter
+        int c2 = cli.run(new String[]{"bump", "--root", root.toString(), "-a=com.cli:mod1#1.1.0-SNAPSHOT", "--dry"}, false);
+        Assert.assertEquals(0, c2);
+
+        // Test --artifact= with '#' delimiter
+        int c3 = cli.run(new String[]{"bump", "--root", root.toString(), "--artifact=com.cli:mod1#1.1.0-SNAPSHOT", "--dry"}, false);
+        Assert.assertEquals(0, c3);
+
+        // Test -a= with '=' delimiter
+        int c4 = cli.run(new String[]{"bump", "--root", root.toString(), "-a=com.cli:mod1=1.1.0-SNAPSHOT", "--dry"}, false);
+        Assert.assertEquals(0, c4);
+
+        // Apply using -a=com.cli:mod1#1.2.0-SNAPSHOT
+        int c5 = cli.run(new String[]{"bump", "--root", root.toString(), "-a=com.cli:mod1#1.2.0-SNAPSHOT"}, false);
+        Assert.assertEquals(0, c5);
+        Assert.assertTrue(mod1.resolve("pom.xml").readString().contains("<version>1.2.0-SNAPSHOT</version>"));
     }
 }

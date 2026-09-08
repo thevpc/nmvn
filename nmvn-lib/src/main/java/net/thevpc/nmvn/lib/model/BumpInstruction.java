@@ -10,18 +10,29 @@ public class BumpInstruction {
     public BumpInstruction(String groupId, String artifactId, String toVersion) {
         this.groupId = Objects.requireNonNull(groupId, "groupId cannot be null").trim();
         this.artifactId = Objects.requireNonNull(artifactId, "artifactId cannot be null").trim();
-        this.toVersion = Objects.requireNonNull(toVersion, "toVersion cannot be null").trim();
+        this.toVersion = toVersion != null ? toVersion.trim() : null;
     }
 
     public static BumpInstruction parse(String str) {
-        if (str == null || !str.contains("=")) {
-            throw new IllegalArgumentException("Invalid bump instruction format. Expected groupId:artifactId=version, got: " + str);
+        if (str == null || str.trim().isEmpty()) {
+            throw new IllegalArgumentException("Invalid bump instruction format. Expected groupId:artifactId[#version]");
         }
-        int eq = str.indexOf('=');
-        String gaStr = str.substring(0, eq).trim();
-        String ver = str.substring(eq + 1).trim();
-        net.thevpc.nuts.artifact.NId ga = MavenCoord.parse(gaStr);
-        return new BumpInstruction(ga.groupId(), ga.artifactId(), ver);
+        String s = str.trim();
+        if (s.contains("#")) {
+            net.thevpc.nuts.artifact.NId id = MavenCoord.parse(s);
+            String ver = (id.version() != null && !id.version().value().isEmpty()) ? id.version().value() : null;
+            return new BumpInstruction(id.groupId(), id.artifactId(), ver);
+        }
+        if (s.contains("=")) {
+            int eq = s.indexOf('=');
+            String gaStr = s.substring(0, eq).trim();
+            String ver = s.substring(eq + 1).trim();
+            net.thevpc.nuts.artifact.NId ga = MavenCoord.parse(gaStr);
+            return new BumpInstruction(ga.groupId(), ga.artifactId(), ver.isEmpty() ? null : ver);
+        }
+        net.thevpc.nuts.artifact.NId id = MavenCoord.parse(s);
+        String ver = (id.version() != null && !id.version().value().isEmpty()) ? id.version().value() : null;
+        return new BumpInstruction(id.groupId(), id.artifactId(), ver);
     }
 
     public String getGroupId() {
@@ -41,6 +52,9 @@ public class BumpInstruction {
     }
 
     public net.thevpc.nuts.artifact.NId toId() {
+        if (toVersion == null) {
+            return toGa();
+        }
         return net.thevpc.nuts.artifact.NId.of(groupId, artifactId, toVersion);
     }
 
@@ -55,7 +69,7 @@ public class BumpInstruction {
         BumpInstruction that = (BumpInstruction) o;
         return groupId.equals(that.groupId) &&
                 artifactId.equals(that.artifactId) &&
-                toVersion.equals(that.toVersion);
+                Objects.equals(toVersion, that.toVersion);
     }
 
     @Override

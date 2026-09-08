@@ -39,42 +39,47 @@ public class MvnVersionCli {
     }
 
     public int run(String[] args, boolean jsonOutput) {
+        NSession session = this.session.copy();
         NCmdLine cmd = NCmdLine.of(args);
         NRef<String> subCommand = NRef.ofNull();
         NRef<String> configPath = NRef.ofNull();
-        NRef<Boolean> apply = NRef.of(false);
-        NRef<Boolean> dryRun = NRef.of(false);
         NRef<Boolean> strict = NRef.of(false);
         NRef<Boolean> failOnWarning = NRef.of(false);
         NRef<Boolean> cascadeVersions = NRef.ofNull();
         NRef<Boolean> jsonOutputRef = NRef.of(jsonOutput);
+        NRef<BumpPolicy.IncrementType> increment = NRef.ofNull();
+        NRef<Boolean> force = NRef.of(false);
         List<String> roots = new ArrayList<>();
         List<String> excludes = new ArrayList<>();
         List<BumpInstruction> cliInstructions = new ArrayList<>();
+        Map<NId, String> explicitUpdates = new LinkedHashMap<>();
         Map<NId, String> explicitReleases = new LinkedHashMap<>();
 
         while (cmd.hasNext()) {
             if (subCommand.isNull()) {
-                if (session.configureFirst(cmd)) {
-                    // handled by nuts
-                } else if (!cmd.matcher()
+                if (!cmd.matcher()
                         .when("scan").asArg(a -> subCommand.set("scan"))
                         .when("bump").asArg(a -> subCommand.set("bump"))
+                        .when("update", "set").asArg(a -> subCommand.set("update"))
                         .when("release", "fix-snapshots").asArg(a -> subCommand.set("release"))
                         .when("check", "validate").asArg(a -> subCommand.set("check"))
                         .when("-j", "--json").asFlag(a -> jsonOutputRef.set(a.booleanValue()))
                         .anyMatch()) {
-                    cmd.throwUnexpectedArgument();
+                    if (session.configureFirst(cmd)) {
+                        // handled by nuts
+                    } else {
+                        cmd.throwUnexpectedArgument();
+                    }
                 }
             } else {
-                if (session.configureFirst(cmd)) {
-                    // handled by nuts
-                } else if (!cmd.matcher()
+                if (!cmd.matcher()
                         .when("--workset", "--ws", "--config").asEntry(a -> configPath.set(a.stringValue()))
-                        .when("--apply").asFlag(a -> apply.set(a.booleanValue()))
-                        .when("--dry-run").asFlag(a -> dryRun.set(a.booleanValue()))
                         .when("--strict").asFlag(a -> strict.set(a.booleanValue()))
                         .when("--fail-on-warning").asFlag(a -> failOnWarning.set(a.booleanValue()))
+                        .when("--patch").asFlag(a -> increment.set(BumpPolicy.IncrementType.PATCH))
+                        .when("--minor").asFlag(a -> increment.set(BumpPolicy.IncrementType.MINOR))
+                        .when("--major").asFlag(a -> increment.set(BumpPolicy.IncrementType.MAJOR))
+                        .when("-f", "--force").asFlag(a -> force.set(a.booleanValue()))
                         .when("--cascade-versions").asFlag(a -> {
                             if (a.booleanValue()) {
                                 cascadeVersions.set(true);
@@ -87,16 +92,20 @@ public class MvnVersionCli {
                         })
                         .when("--root").asEntry(a -> roots.add(a.stringValue()))
                         .when("--exclude").asEntry(a -> excludes.add(a.stringValue()))
-                        .when("-a", "--artifact").asEntry(a -> handleArtifactArg(subCommand.get(), a.stringValue(), cliInstructions, explicitReleases))
-                        .whenNonOption().asArg(a -> handleArtifactArg(subCommand.get(), a.asString().get(), cliInstructions, explicitReleases))
+                        .when("-a", "--artifact").asEntry(a -> handleArtifactArg(subCommand.get(), a.stringValue(), cliInstructions, explicitUpdates, explicitReleases))
+                        .whenNonOption().asArg(a -> handleArtifactArg(subCommand.get(), a.asString().get(), cliInstructions, explicitUpdates, explicitReleases))
                         .anyMatch()) {
-                    cmd.throwUnexpectedArgument();
+                    if (session.configureFirst(cmd)) {
+                        // handled by nuts
+                    } else {
+                        cmd.throwUnexpectedArgument();
+                    }
                 }
             }
         }
 
         if (subCommand.isNull()) {
-            NOut.println(NMsg.ofP("Usage: nmvn version <scan|bump|release|check> [options]"));
+            NOut.println(NMsg.ofP("Usage: nmvn version <scan|bump|update|release|check> [options]"));
             return 1;
         }
 
@@ -112,14 +121,16 @@ public class MvnVersionCli {
             config.getExcludes().addAll(excludes);
         }
 
-        boolean effectiveApply = apply.get() && !dryRun.get();
+        boolean effectiveApply = !session.isDry();
 
         try {
             switch (subCommand.get()) {
                 case "scan":
                     return doScan(config, workingDir, jsonOutputRef.get());
                 case "bump":
-                    return doBump(config, workingDir, cliInstructions, cascadeVersions.get(), effectiveApply, jsonOutputRef.get());
+                    return doBump(config, workingDir, cliInstructions, increment.get(), cascadeVersions.get(), force.get(), effectiveApply, jsonOutputRef.get());
+                case "update":
+                    return doUpdate(config, workingDir, explicitUpdates, effectiveApply, jsonOutputRef.get());
                 case "release":
                     return doRelease(config, workingDir, explicitReleases, strict.get(), effectiveApply, jsonOutputRef.get());
                 case "check":
@@ -134,9 +145,22 @@ public class MvnVersionCli {
         }
     }
 
-    private void handleArtifactArg(String subCommand, String val, List<BumpInstruction> cliInstructions, Map<NId, String> explicitReleases) {
+    private void handleArtifactArg(String subCommand, String val, List<BumpInstruction> cliInstructions,
+                                   Map<NId, String> explicitUpdates, Map<NId, String> explicitReleases) {
         if ("bump".equals(subCommand)) {
             cliInstructions.add(BumpInstruction.parse(val));
+        } else if ("update".equals(subCommand)) {
+            if (val.contains("=")) {
+                int eq = val.indexOf('=');
+                NId ga = MavenCoord.parse(val.substring(0, eq).trim()).shortId();
+                explicitUpdates.put(ga, val.substring(eq + 1).trim());
+            } else {
+                NId id = MavenCoord.parse(val);
+                if (id.version() == null || id.version().value().isEmpty()) {
+                    throw new IllegalArgumentException("Version must be specified for update: " + val);
+                }
+                explicitUpdates.put(id.shortId(), id.version().value());
+            }
         } else if ("release".equals(subCommand)) {
             if (val.contains("=")) {
                 int eq = val.indexOf('=');
@@ -144,7 +168,11 @@ public class MvnVersionCli {
                 explicitReleases.put(ga, val.substring(eq + 1).trim());
             } else {
                 NId id = MavenCoord.parse(val);
-                explicitReleases.put(id.shortId(), id.version().value());
+                if (id.version() != null && !id.version().value().isEmpty()) {
+                    explicitReleases.put(id.shortId(), id.version().value());
+                } else {
+                    explicitReleases.put(id.shortId(), null);
+                }
             }
         }
     }
@@ -206,8 +234,16 @@ public class MvnVersionCli {
     }
 
     private int doBump(NMvnConfig config, NPath workingDir, List<BumpInstruction> explicitBumps,
-                       Boolean cascadeVersions, boolean apply, boolean jsonOutput) throws IOException {
-        BumpResult result = versionService.bump(config, workingDir, explicitBumps, cascadeVersions, apply);
+                       BumpPolicy.IncrementType increment,
+                       Boolean cascadeVersions, boolean force, boolean apply, boolean jsonOutput) throws IOException {
+        BumpResult result = versionService.bump(config, workingDir, explicitBumps, increment, cascadeVersions, force, apply);
+        renderChanges(result.getChanges(), apply, jsonOutput);
+        return 0;
+    }
+
+    private int doUpdate(NMvnConfig config, NPath workingDir, Map<NId, String> explicitUpdates,
+                         boolean apply, boolean jsonOutput) throws IOException {
+        BumpResult result = versionService.update(config, workingDir, explicitUpdates, apply);
         renderChanges(result.getChanges(), apply, jsonOutput);
         return 0;
     }
@@ -244,7 +280,7 @@ public class MvnVersionCli {
         if (apply) {
             NOut.println(NMsg.ofStyled(String.format("Applied changes to %d POM file(s):", changes.size()), NTextStyle.success()));
         } else {
-            NOut.println(NMsg.ofStyled(String.format("DRY RUN: %d POM file(s) would be modified (use --apply to write):", changes.size()), NTextStyle.warn()));
+            NOut.println(NMsg.ofStyled(String.format("DRY RUN: %d POM file(s) would be modified:", changes.size()), NTextStyle.warn()));
         }
 
         for (PomChange change : changes) {
