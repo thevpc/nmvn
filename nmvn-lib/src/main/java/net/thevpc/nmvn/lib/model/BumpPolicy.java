@@ -26,14 +26,21 @@ public class BumpPolicy {
     }
 
     public enum CascadePolicy {
+        NONE,
         CASCADE_REFERENCES_ONLY,
         CASCADE_VERSIONS;
 
         public static CascadePolicy parse(String str) {
             if (str == null) return CASCADE_REFERENCES_ONLY;
             String clean = str.trim().toLowerCase().replace("_", "-");
-            if ("cascade-versions".equals(clean)) {
+            if ("cascade-versions".equals(clean) || "versions".equals(clean) || "version".equals(clean) || "all".equals(clean)) {
                 return CASCADE_VERSIONS;
+            }
+            if ("none".equals(clean) || "no-cascade".equals(clean) || "false".equals(clean)) {
+                return NONE;
+            }
+            if ("cascade-references-only".equals(clean) || "references-only".equals(clean) || "references".equals(clean) || "refs".equals(clean)) {
+                return CASCADE_REFERENCES_ONLY;
             }
             return CASCADE_REFERENCES_ONLY;
         }
@@ -41,7 +48,7 @@ public class BumpPolicy {
 
     private IncrementType defaultIncrement = IncrementType.MINOR;
     private String snapshotSuffix = "-SNAPSHOT";
-    private CascadePolicy cascadePolicy = CascadePolicy.CASCADE_REFERENCES_ONLY;
+    private CascadePolicy cascadePolicy = CascadePolicy.CASCADE_VERSIONS;
 
     public BumpPolicy() {
     }

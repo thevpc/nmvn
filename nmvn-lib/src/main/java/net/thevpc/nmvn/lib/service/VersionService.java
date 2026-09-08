@@ -47,12 +47,20 @@ public class VersionService {
     public BumpResult bump(NMvnConfig config, NPath workingDir, List<BumpInstruction> explicitBumps,
                            BumpPolicy.IncrementType incrementOverride,
                            Boolean cascadeVersionsOverride, boolean force, boolean apply) throws IOException {
+        BumpPolicy.CascadePolicy cp = cascadeVersionsOverride == null ? null :
+                (cascadeVersionsOverride ? BumpPolicy.CascadePolicy.CASCADE_VERSIONS : BumpPolicy.CascadePolicy.CASCADE_REFERENCES_ONLY);
+        return bump(config, workingDir, explicitBumps, incrementOverride, cp, force, apply);
+    }
+
+    public BumpResult bump(NMvnConfig config, NPath workingDir, List<BumpInstruction> explicitBumps,
+                           BumpPolicy.IncrementType incrementOverride,
+                           BumpPolicy.CascadePolicy cascadePolicyOverride, boolean force, boolean apply) throws IOException {
         ScanResult scanResult = scan(config, workingDir);
         Map<NId, PomArtifact> artifacts = scanResult.getArtifacts();
         MavenDependencyGraph graph = scanResult.getGraph();
 
-        boolean cascadeVersions = cascadeVersionsOverride != null ? cascadeVersionsOverride
-                : config.getBumpPolicy().getCascadePolicy() == BumpPolicy.CascadePolicy.CASCADE_VERSIONS;
+        BumpPolicy.CascadePolicy cascadePolicy = cascadePolicyOverride != null ? cascadePolicyOverride
+                : config.getBumpPolicy().getCascadePolicy();
 
         BumpPolicy.IncrementType defaultInc = incrementOverride != null ? incrementOverride : config.getBumpPolicy().getDefaultIncrement();
 
@@ -100,33 +108,24 @@ public class VersionService {
             }
         }
 
-        // Cascade to dependents
-        Queue<NId> dirtyQueue = new ArrayDeque<>(targetVersions.keySet());
-        Set<NId> visited = new HashSet<>(targetVersions.keySet());
+        // Cascade to dependents only when CASCADE_VERSIONS is enabled
+        if (cascadePolicy == BumpPolicy.CascadePolicy.CASCADE_VERSIONS) {
+            Queue<NId> dirtyQueue = new ArrayDeque<>(targetVersions.keySet());
+            Set<NId> visited = new HashSet<>(targetVersions.keySet());
 
-        while (!dirtyQueue.isEmpty()) {
-            NId currGa = dirtyQueue.poll();
-            Set<NId> dependents = graph.getDirectDependents(currGa);
+            while (!dirtyQueue.isEmpty()) {
+                NId currGa = dirtyQueue.poll();
+                Set<NId> dependents = graph.getDirectDependents(currGa);
 
-            for (NId depGa : dependents) {
-                if (!targetVersions.containsKey(depGa)) {
-                    PomArtifact depArtifact = artifacts.get(depGa);
-                    if (depArtifact != null) {
-                        String currentVer = depArtifact.getResolvedVersion();
-                        boolean isSnapshot = config.getBumpPolicy().isSnapshot(currentVer);
+                for (NId depGa : dependents) {
+                    if (!targetVersions.containsKey(depGa)) {
+                        PomArtifact depArtifact = artifacts.get(depGa);
+                        if (depArtifact != null) {
+                            String currentVer = depArtifact.getResolvedVersion();
+                            boolean isSnapshot = config.getBumpPolicy().isSnapshot(currentVer);
 
-                        if (cascadeVersions) {
                             if (!isSnapshot || force) {
                                 String nextVer = config.getBumpPolicy().bumpVersion(currentVer, defaultInc);
-                                targetVersions.put(depGa, nextVer);
-                                if (visited.add(depGa)) {
-                                    dirtyQueue.add(depGa);
-                                }
-                            }
-                        } else {
-                            // Release immutability: if release, must bump to snapshot
-                            if (!isSnapshot) {
-                                String nextVer = config.getBumpPolicy().bumpVersion(currentVer, config.getBumpPolicy().getDefaultIncrement());
                                 targetVersions.put(depGa, nextVer);
                                 if (visited.add(depGa)) {
                                     dirtyQueue.add(depGa);
@@ -139,7 +138,7 @@ public class VersionService {
         }
 
         // Apply modifications in memory
-        List<PomChange> changes = applyModifications(artifacts, targetVersions);
+        List<PomChange> changes = applyModifications(artifacts, targetVersions, cascadePolicy);
 
         if (apply) {
             applyChangesToDisk(changes);
@@ -151,9 +150,18 @@ public class VersionService {
 
     public BumpResult update(NMvnConfig config, NPath workingDir, Map<NId, String> explicitUpdates,
                              boolean apply) throws IOException {
+        return update(config, workingDir, explicitUpdates, null, apply);
+    }
+
+    public BumpResult update(NMvnConfig config, NPath workingDir, Map<NId, String> explicitUpdates,
+                             BumpPolicy.CascadePolicy cascadePolicyOverride,
+                             boolean apply) throws IOException {
         ScanResult scanResult = scan(config, workingDir);
         Map<NId, PomArtifact> artifacts = scanResult.getArtifacts();
         MavenDependencyGraph graph = scanResult.getGraph();
+
+        BumpPolicy.CascadePolicy cascadePolicy = cascadePolicyOverride != null ? cascadePolicyOverride
+                : config.getBumpPolicy().getCascadePolicy();
 
         Map<NId, String> targetVersions = new LinkedHashMap<>();
         if (explicitUpdates != null) {
@@ -164,27 +172,29 @@ public class VersionService {
             return new BumpResult(Collections.emptyList(), Collections.emptyMap());
         }
 
-        // Release Immutability Cascade:
+        // Release Immutability Cascade (only if CASCADE_VERSIONS):
         // Any dependent whose POM is modified:
         // - if already snapshot -> version is untouched (only dependency reference is updated)
         // - if release (non-snapshot) -> must be bumped to snapshot
-        Queue<NId> dirtyQueue = new ArrayDeque<>(targetVersions.keySet());
-        Set<NId> visited = new HashSet<>(targetVersions.keySet());
+        if (cascadePolicy == BumpPolicy.CascadePolicy.CASCADE_VERSIONS) {
+            Queue<NId> dirtyQueue = new ArrayDeque<>(targetVersions.keySet());
+            Set<NId> visited = new HashSet<>(targetVersions.keySet());
 
-        while (!dirtyQueue.isEmpty()) {
-            NId currGa = dirtyQueue.poll();
-            Set<NId> dependents = graph.getDirectDependents(currGa);
+            while (!dirtyQueue.isEmpty()) {
+                NId currGa = dirtyQueue.poll();
+                Set<NId> dependents = graph.getDirectDependents(currGa);
 
-            for (NId depGa : dependents) {
-                if (!targetVersions.containsKey(depGa)) {
-                    PomArtifact depArtifact = artifacts.get(depGa);
-                    if (depArtifact != null) {
-                        String currentVer = depArtifact.getResolvedVersion();
-                        if (!config.getBumpPolicy().isSnapshot(currentVer)) {
-                            String nextVer = config.getBumpPolicy().bumpVersion(currentVer, config.getBumpPolicy().getDefaultIncrement());
-                            targetVersions.put(depGa, nextVer);
-                            if (visited.add(depGa)) {
-                                dirtyQueue.add(depGa);
+                for (NId depGa : dependents) {
+                    if (!targetVersions.containsKey(depGa)) {
+                        PomArtifact depArtifact = artifacts.get(depGa);
+                        if (depArtifact != null) {
+                            String currentVer = depArtifact.getResolvedVersion();
+                            if (!config.getBumpPolicy().isSnapshot(currentVer)) {
+                                String nextVer = config.getBumpPolicy().bumpVersion(currentVer, config.getBumpPolicy().getDefaultIncrement());
+                                targetVersions.put(depGa, nextVer);
+                                if (visited.add(depGa)) {
+                                    dirtyQueue.add(depGa);
+                                }
                             }
                         }
                     }
@@ -192,7 +202,7 @@ public class VersionService {
             }
         }
 
-        List<PomChange> changes = applyModifications(artifacts, targetVersions);
+        List<PomChange> changes = applyModifications(artifacts, targetVersions, cascadePolicy);
 
         if (apply) {
             applyChangesToDisk(changes);
@@ -247,6 +257,10 @@ public class VersionService {
     }
 
     private List<PomChange> applyModifications(Map<NId, PomArtifact> artifacts, Map<NId, String> targetVersions) throws IOException {
+        return applyModifications(artifacts, targetVersions, BumpPolicy.CascadePolicy.CASCADE_REFERENCES_ONLY);
+    }
+
+    private List<PomChange> applyModifications(Map<NId, PomArtifact> artifacts, Map<NId, String> targetVersions, BumpPolicy.CascadePolicy cascadePolicy) throws IOException {
         // Map file paths to in-memory modified text content
         Map<NPath, String> contentByPath = new LinkedHashMap<>();
         for (PomArtifact a : artifacts.values()) {
@@ -278,7 +292,8 @@ public class VersionService {
         }
 
         // 2. Cascade references (parent, dependencies, BOMs, plugins)
-        Set<String> updatedProperties = new HashSet<>();
+        if (cascadePolicy != null && cascadePolicy != BumpPolicy.CascadePolicy.NONE) {
+            Set<String> updatedProperties = new HashSet<>();
 
         for (PomArtifact artifact : artifacts.values()) {
             NPath pomPath = artifact.getPath();
@@ -321,6 +336,7 @@ public class VersionService {
                     }
                 }
             }
+        }
         }
 
         // 3. Build PomChange list

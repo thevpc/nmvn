@@ -45,7 +45,7 @@ public class MvnVersionCli {
         NRef<String> configPath = NRef.ofNull();
         NRef<Boolean> strict = NRef.of(false);
         NRef<Boolean> failOnWarning = NRef.of(false);
-        NRef<Boolean> cascadeVersions = NRef.ofNull();
+        NRef<BumpPolicy.CascadePolicy> cascadePolicy = NRef.ofNull();
         NRef<Boolean> jsonOutputRef = NRef.of(jsonOutput);
         NRef<BumpPolicy.IncrementType> increment = NRef.ofNull();
         NRef<Boolean> force = NRef.of(false);
@@ -80,14 +80,20 @@ public class MvnVersionCli {
                         .when("--minor").asFlag(a -> increment.set(BumpPolicy.IncrementType.MINOR))
                         .when("--major").asFlag(a -> increment.set(BumpPolicy.IncrementType.MAJOR))
                         .when("-f", "--force").asFlag(a -> force.set(a.booleanValue()))
+                        .when("-c", "--cascade", "--cascade-policy").asEntry(a -> cascadePolicy.set(BumpPolicy.CascadePolicy.parse(a.stringValue())))
                         .when("--cascade-versions").asFlag(a -> {
                             if (a.booleanValue()) {
-                                cascadeVersions.set(true);
+                                cascadePolicy.set(BumpPolicy.CascadePolicy.CASCADE_VERSIONS);
                             }
                         })
-                        .when("--cascade-references-only").asFlag(a -> {
+                        .when("--cascade-references-only", "--no-cascade-versions").asFlag(a -> {
                             if (a.booleanValue()) {
-                                cascadeVersions.set(false);
+                                cascadePolicy.set(BumpPolicy.CascadePolicy.CASCADE_REFERENCES_ONLY);
+                            }
+                        })
+                        .when("--no-cascade").asFlag(a -> {
+                            if (a.booleanValue()) {
+                                cascadePolicy.set(BumpPolicy.CascadePolicy.NONE);
                             }
                         })
                         .when("--root").asEntry(a -> roots.add(a.stringValue()))
@@ -128,9 +134,9 @@ public class MvnVersionCli {
                 case "scan":
                     return doScan(config, workingDir, jsonOutputRef.get());
                 case "bump":
-                    return doBump(config, workingDir, cliInstructions, increment.get(), cascadeVersions.get(), force.get(), effectiveApply, jsonOutputRef.get());
+                    return doBump(config, workingDir, cliInstructions, increment.get(), cascadePolicy.get(), force.get(), effectiveApply, jsonOutputRef.get());
                 case "update":
-                    return doUpdate(config, workingDir, explicitUpdates, effectiveApply, jsonOutputRef.get());
+                    return doUpdate(config, workingDir, explicitUpdates, cascadePolicy.get(), effectiveApply, jsonOutputRef.get());
                 case "release":
                     return doRelease(config, workingDir, explicitReleases, strict.get(), effectiveApply, jsonOutputRef.get());
                 case "check":
@@ -235,15 +241,16 @@ public class MvnVersionCli {
 
     private int doBump(NMvnConfig config, NPath workingDir, List<BumpInstruction> explicitBumps,
                        BumpPolicy.IncrementType increment,
-                       Boolean cascadeVersions, boolean force, boolean apply, boolean jsonOutput) throws IOException {
-        BumpResult result = versionService.bump(config, workingDir, explicitBumps, increment, cascadeVersions, force, apply);
+                       BumpPolicy.CascadePolicy cascadePolicy, boolean force, boolean apply, boolean jsonOutput) throws IOException {
+        BumpResult result = versionService.bump(config, workingDir, explicitBumps, increment, cascadePolicy, force, apply);
         renderChanges(result.getChanges(), apply, jsonOutput);
         return 0;
     }
 
     private int doUpdate(NMvnConfig config, NPath workingDir, Map<NId, String> explicitUpdates,
+                         BumpPolicy.CascadePolicy cascadePolicy,
                          boolean apply, boolean jsonOutput) throws IOException {
-        BumpResult result = versionService.update(config, workingDir, explicitUpdates, apply);
+        BumpResult result = versionService.update(config, workingDir, explicitUpdates, cascadePolicy, apply);
         renderChanges(result.getChanges(), apply, jsonOutput);
         return 0;
     }

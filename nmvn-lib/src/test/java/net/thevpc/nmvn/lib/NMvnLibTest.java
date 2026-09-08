@@ -1069,12 +1069,12 @@ public class NMvnLibTest {
         PomDependency secDep = app.getDependencies().stream()
                 .filter(d -> "spring-security-test".equals(d.getArtifactId())).findFirst().orElse(null);
         Assert.assertNotNull(secDep);
-        Assert.assertEquals("6.3.4", secDep.getResolvedVersion());
+        Assert.assertEquals("6.4.4", secDep.getResolvedVersion());
 
         PomDependency pgDep = app.getDependencies().stream()
                 .filter(d -> "postgresql".equals(d.getArtifactId())).findFirst().orElse(null);
         Assert.assertNotNull(pgDep);
-        Assert.assertEquals("42.7.4", pgDep.getResolvedVersion());
+        Assert.assertEquals("42.7.5", pgDep.getResolvedVersion());
 
         DiagnosticReport report = service.check(config, root);
         long missingCount = report.getIssues().stream()

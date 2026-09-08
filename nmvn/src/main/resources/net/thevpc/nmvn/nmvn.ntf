@@ -5,8 +5,8 @@ manage multi-project maven worksets and versions
 ==nmvn== [**--version** <MVN_VERSION>] [{{args...}}]
 ==nmvn== **workset** [**list**|**path**|**get**|**set**|**add-root**|**remove-root**|**scan**|**edit**] [{{options...}}]
 ==nmvn== **version scan**    [**--workset** <FILE>] [**-j**|**--json**]
-==nmvn== **version bump**    [**--workset** <FILE>] [**--dry**] [**--patch**|**--minor**|**--major**] [**-f**|**--force**] [**--cascade-references-only**|**--cascade-versions**] [**-a** <GA[#VER]>]...
-==nmvn== **version update**  [**--workset** <FILE>] [**--dry**] [**-a** <GA#VER>]...
+==nmvn== **version bump**    [**--workset** <FILE>] [**--dry**] [**--patch**|**--minor**|**--major**] [**-f**|**--force**] [**--cascade**=<versions|references|none>] [**-a** <GA[#VER]>]...
+==nmvn== **version update**  [**--workset** <FILE>] [**--dry**] [**--cascade**=<versions|references|none>] [**-a** <GA#VER>]...
 ==nmvn== **version release** [**--workset** <FILE>] [**--dry**] [**--strict**] [**-a** <GA#VER>]...
 ==nmvn== **version check**   [**--workset** <FILE>] [**--fail-on-warning**] [**-j**|**--json**]
 
@@ -21,11 +21,11 @@ manage multi-project maven worksets and versions
     ```sh -f | --force```
         in bump mode, force advancing an artifact that is already in snapshot mode.
 
-    ```sh --cascade-references-only```
-        (default) update dependency, parent, and property references in consuming modules without changing their own project versions. If a consuming module was a release, it is automatically bumped to snapshot to preserve release immutability.
-
-    ```sh --cascade-versions```
-        cascade version bump through the dependency graph: updates references AND increments the project version of all direct and indirect dependents.
+    ```sh -c=<mode> | --cascade=<mode>```
+        control downstream cascading behavior (`versions`, `references`, or `none`).
+        - `versions` (or `--cascade-versions`): update references AND bump dependent module versions.
+        - `references` (or `--cascade-references-only`, `--no-cascade-versions`): update references in dependent POMs, but leave their project versions untouched.
+        - `none` (or `--no-cascade`): touch only the target artifact's POM; leave downstream POMs completely untouched.
 
     ```sh --dry | -D```
         preview unified diff of changes without modifying files on disk. Default is non-dry (applies changes).

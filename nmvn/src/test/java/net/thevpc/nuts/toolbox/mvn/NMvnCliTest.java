@@ -480,4 +480,109 @@ public class NMvnCliTest {
         Assert.assertEquals(0, c2);
         Assert.assertTrue(mod1.resolve("pom.xml").readString().contains("<version>2.0.0-SNAPSHOT</version>"));
     }
+
+    @Test
+    public void testVersionUpdateCascadeReferencesOption() throws Exception {
+        NPath root = NPath.of(temp.newFolder("cli-update-cascade-refs-test"));
+        NPath modA = root.resolve("mod-a");
+        NPath modB = root.resolve("mod-b");
+
+        createPom(modA,
+                "<project>\n" +
+                "  <modelVersion>4.0.0</modelVersion>\n" +
+                "  <groupId>com.cli</groupId>\n" +
+                "  <artifactId>mod-a</artifactId>\n" +
+                "  <version>1.0.0</version>\n" +
+                "</project>");
+
+        createPom(modB,
+                "<project>\n" +
+                "  <modelVersion>4.0.0</modelVersion>\n" +
+                "  <groupId>com.cli</groupId>\n" +
+                "  <artifactId>mod-b</artifactId>\n" +
+                "  <version>2.0.0</version>\n" +
+                "  <dependencies>\n" +
+                "    <dependency>\n" +
+                "      <groupId>com.cli</groupId>\n" +
+                "      <artifactId>mod-a</artifactId>\n" +
+                "      <version>1.0.0</version>\n" +
+                "    </dependency>\n" +
+                "    <dependency>\n" +
+                "      <groupId>org.yaml</groupId>\n" +
+                "      <artifactId>snakeyaml</artifactId>\n" +
+                "      <version>1.33</version>\n" +
+                "    </dependency>\n" +
+                "  </dependencies>\n" +
+                "</project>");
+
+        NSession session = NSession.of();
+        MvnVersionCli cli = new MvnVersionCli(session);
+
+        // Update external dependency org.yaml:snakeyaml#2.2 with --cascade=references
+        int c1 = cli.run(new String[]{"update", "--root", root.toString(), "org.yaml:snakeyaml#2.2", "--cascade=references"}, false);
+        Assert.assertEquals(0, c1);
+
+        String bContent1 = modB.resolve("pom.xml").readString();
+        // Dependency on snakeyaml updated to 2.2
+        Assert.assertTrue(bContent1.contains("<version>2.2</version>"));
+        // mod-b own version NOT bumped (remains 2.0.0)
+        Assert.assertTrue(bContent1.contains("<artifactId>mod-b</artifactId>\n  <version>2.0.0</version>"));
+
+        // Update internal dependency com.cli:mod-a#1.1.0 with --cascade=references
+        int c2 = cli.run(new String[]{"update", "--root", root.toString(), "com.cli:mod-a#1.1.0", "--cascade=references"}, false);
+        Assert.assertEquals(0, c2);
+
+        String aContent = modA.resolve("pom.xml").readString();
+        Assert.assertTrue(aContent.contains("<version>1.1.0</version>"));
+
+        String bContent2 = modB.resolve("pom.xml").readString();
+        Assert.assertTrue(bContent2.contains("<artifactId>mod-b</artifactId>\n  <version>2.0.0</version>"));
+        Assert.assertTrue(bContent2.contains("<version>1.1.0</version>"));
+    }
+
+    @Test
+    public void testVersionUpdateCascadeNone() throws Exception {
+        NPath root = NPath.of(temp.newFolder("cli-update-cascade-none-test"));
+        NPath modA = root.resolve("mod-a");
+        NPath modB = root.resolve("mod-b");
+
+        createPom(modA,
+                "<project>\n" +
+                "  <modelVersion>4.0.0</modelVersion>\n" +
+                "  <groupId>com.cli</groupId>\n" +
+                "  <artifactId>mod-a</artifactId>\n" +
+                "  <version>1.0.0</version>\n" +
+                "</project>");
+
+        createPom(modB,
+                "<project>\n" +
+                "  <modelVersion>4.0.0</modelVersion>\n" +
+                "  <groupId>com.cli</groupId>\n" +
+                "  <artifactId>mod-b</artifactId>\n" +
+                "  <version>2.0.0</version>\n" +
+                "  <dependencies>\n" +
+                "    <dependency>\n" +
+                "      <groupId>com.cli</groupId>\n" +
+                "      <artifactId>mod-a</artifactId>\n" +
+                "      <version>1.0.0</version>\n" +
+                "    </dependency>\n" +
+                "  </dependencies>\n" +
+                "</project>");
+
+        NSession session = NSession.of();
+        MvnVersionCli cli = new MvnVersionCli(session);
+
+        // Update com.cli:mod-a#1.2.0 with --cascade=none
+        int code = cli.run(new String[]{"update", "--root", root.toString(), "com.cli:mod-a#1.2.0", "--cascade=none"}, false);
+        Assert.assertEquals(0, code);
+
+        String aContent = modA.resolve("pom.xml").readString();
+        Assert.assertTrue(aContent.contains("<version>1.2.0</version>"));
+
+        String bContent = modB.resolve("pom.xml").readString();
+        // mod-b dependency on mod-a should remain 1.0.0 (untouched because --cascade=none)
+        Assert.assertTrue(bContent.contains("<version>1.0.0</version>"));
+        // mod-b own version should remain 2.0.0
+        Assert.assertTrue(bContent.contains("<version>2.0.0</version>"));
+    }
 }
