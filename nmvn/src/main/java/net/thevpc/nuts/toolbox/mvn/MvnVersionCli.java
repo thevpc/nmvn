@@ -73,7 +73,7 @@ public class MvnVersionCli {
                 }
             } else {
                 if (!cmd.matcher()
-                        .when("--workset", "--ws", "--config").asEntry(a -> configPath.set(a.stringValue()))
+                        .when("--workset", "--ws").asEntry(a -> configPath.set(a.stringValue()))
                         .when("--strict").asFlag(a -> strict.set(a.booleanValue()))
                         .when("--fail-on-warning").asFlag(a -> failOnWarning.set(a.booleanValue()))
                         .when("--patch").asFlag(a -> increment.set(BumpPolicy.IncrementType.PATCH))

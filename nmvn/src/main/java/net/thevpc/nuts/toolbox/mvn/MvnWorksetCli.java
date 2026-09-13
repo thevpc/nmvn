@@ -61,7 +61,7 @@ public class MvnWorksetCli {
                         .when("-j", "--json").asFlag(a -> jsonOutputRef.set(a.booleanValue()))
                         .when("--recent").asFlag(a -> recent.set(a.booleanValue()))
                         .when("--scan").asFlag(a -> scan.set(a.booleanValue()))
-                        .when("--name", "--workset", "--ws", "--config").asEntry(a -> worksetName.set(a.stringValue()))
+                        .when("--name", "--workset", "--ws").asEntry(a -> worksetName.set(a.stringValue()))
                         .anyMatch()) {
                     cmd.throwUnexpectedArgument();
                 }
@@ -72,7 +72,7 @@ public class MvnWorksetCli {
                         .when("-j", "--json").asFlag(a -> jsonOutputRef.set(a.booleanValue()))
                         .when("--recent").asFlag(a -> recent.set(a.booleanValue()))
                         .when("--scan").asFlag(a -> scan.set(a.booleanValue()))
-                        .when("--name", "--workset", "--ws", "--config").asEntry(a -> worksetName.set(a.stringValue()))
+                        .when("--name", "--workset", "--ws").asEntry(a -> worksetName.set(a.stringValue()))
                         .when("--root", "--folder").asEntry(a -> roots.add(a.stringValue()))
                         .when("--exclude").asEntry(a -> excludes.add(a.stringValue()))
                         .when("--default-increment").asEntry(a -> defaultIncrement.set(a.stringValue()))
