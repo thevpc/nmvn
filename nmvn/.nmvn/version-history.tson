@@ -251,6 +251,146 @@
       artifactId : "mod1" ,
       version : "1.2.2-SNAPSHOT" ,
       timestamp : "2026-09-08T19:56:05.189168490Z"
+    } ,
+    {
+      commit : "f17fcc18e5b954d71593a3f288b063c5547e3f8c" ,
+      groupId : "com.cli" ,
+      artifactId : "mod1" ,
+      version : "1.2.0-SNAPSHOT" ,
+      timestamp : "2026-09-20T11:14:45.596442101Z"
+    } ,
+    {
+      commit : "f17fcc18e5b954d71593a3f288b063c5547e3f8c" ,
+      groupId : "com.cli" ,
+      artifactId : "mod1" ,
+      version : "1.0.0.0" ,
+      timestamp : "2026-09-20T11:14:45.660262276Z"
+    } ,
+    {
+      commit : "f17fcc18e5b954d71593a3f288b063c5547e3f8c" ,
+      groupId : "com.cli" ,
+      artifactId : "mod-a" ,
+      version : "1.2.0" ,
+      timestamp : "2026-09-20T11:14:45.704845884Z"
+    } ,
+    {
+      commit : "f17fcc18e5b954d71593a3f288b063c5547e3f8c" ,
+      groupId : "org.yaml" ,
+      artifactId : "snakeyaml" ,
+      version : "2.2" ,
+      timestamp : "2026-09-20T11:14:45.738580330Z"
+    } ,
+    {
+      commit : "f17fcc18e5b954d71593a3f288b063c5547e3f8c" ,
+      groupId : "com.cli" ,
+      artifactId : "mod-a" ,
+      version : "1.1.0" ,
+      timestamp : "2026-09-20T11:14:45.747969421Z"
+    } ,
+    {
+      commit : "f17fcc18e5b954d71593a3f288b063c5547e3f8c" ,
+      groupId : "com.cli" ,
+      artifactId : "mod1" ,
+      version : "1.3.0-SNAPSHOT" ,
+      timestamp : "2026-09-20T11:14:45.757833347Z"
+    } ,
+    {
+      commit : "f17fcc18e5b954d71593a3f288b063c5547e3f8c" ,
+      groupId : "com.cli" ,
+      artifactId : "mod1" ,
+      version : "2.0.0-SNAPSHOT" ,
+      timestamp : "2026-09-20T11:14:45.766636269Z"
+    } ,
+    {
+      commit : "f17fcc18e5b954d71593a3f288b063c5547e3f8c" ,
+      groupId : "com.cli" ,
+      artifactId : "mod-a" ,
+      version : "1.0.0.0" ,
+      timestamp : "2026-09-20T11:14:45.793046958Z"
+    } ,
+    {
+      commit : "f17fcc18e5b954d71593a3f288b063c5547e3f8c" ,
+      groupId : "com.cli" ,
+      artifactId : "mod-b" ,
+      version : "2.1.0-SNAPSHOT" ,
+      timestamp : "2026-09-20T11:14:45.793079702Z"
+    } ,
+    {
+      commit : "f17fcc18e5b954d71593a3f288b063c5547e3f8c" ,
+      groupId : "com.cli" ,
+      artifactId : "mod1" ,
+      version : "1.2.2-SNAPSHOT" ,
+      timestamp : "2026-09-20T11:14:45.818682934Z"
+    } ,
+    {
+      commit : "f17fcc18e5b954d71593a3f288b063c5547e3f8c" ,
+      groupId : "com.cli" ,
+      artifactId : "mod1" ,
+      version : "1.2.0-SNAPSHOT" ,
+      timestamp : "2026-09-20T11:22:19.017312442Z"
+    } ,
+    {
+      commit : "f17fcc18e5b954d71593a3f288b063c5547e3f8c" ,
+      groupId : "com.cli" ,
+      artifactId : "mod1" ,
+      version : "1.0.0.0" ,
+      timestamp : "2026-09-20T11:22:19.085316726Z"
+    } ,
+    {
+      commit : "f17fcc18e5b954d71593a3f288b063c5547e3f8c" ,
+      groupId : "com.cli" ,
+      artifactId : "mod-a" ,
+      version : "1.2.0" ,
+      timestamp : "2026-09-20T11:22:19.123158755Z"
+    } ,
+    {
+      commit : "f17fcc18e5b954d71593a3f288b063c5547e3f8c" ,
+      groupId : "org.yaml" ,
+      artifactId : "snakeyaml" ,
+      version : "2.2" ,
+      timestamp : "2026-09-20T11:22:19.150410253Z"
+    } ,
+    {
+      commit : "f17fcc18e5b954d71593a3f288b063c5547e3f8c" ,
+      groupId : "com.cli" ,
+      artifactId : "mod-a" ,
+      version : "1.1.0" ,
+      timestamp : "2026-09-20T11:22:19.171051204Z"
+    } ,
+    {
+      commit : "f17fcc18e5b954d71593a3f288b063c5547e3f8c" ,
+      groupId : "com.cli" ,
+      artifactId : "mod1" ,
+      version : "1.3.0-SNAPSHOT" ,
+      timestamp : "2026-09-20T11:22:19.188631925Z"
+    } ,
+    {
+      commit : "f17fcc18e5b954d71593a3f288b063c5547e3f8c" ,
+      groupId : "com.cli" ,
+      artifactId : "mod1" ,
+      version : "2.0.0-SNAPSHOT" ,
+      timestamp : "2026-09-20T11:22:19.203928654Z"
+    } ,
+    {
+      commit : "f17fcc18e5b954d71593a3f288b063c5547e3f8c" ,
+      groupId : "com.cli" ,
+      artifactId : "mod-a" ,
+      version : "1.0.0.0" ,
+      timestamp : "2026-09-20T11:22:19.223101267Z"
+    } ,
+    {
+      commit : "f17fcc18e5b954d71593a3f288b063c5547e3f8c" ,
+      groupId : "com.cli" ,
+      artifactId : "mod-b" ,
+      version : "2.1.0-SNAPSHOT" ,
+      timestamp : "2026-09-20T11:22:19.223136688Z"
+    } ,
+    {
+      commit : "f17fcc18e5b954d71593a3f288b063c5547e3f8c" ,
+      groupId : "com.cli" ,
+      artifactId : "mod1" ,
+      version : "1.2.2-SNAPSHOT" ,
+      timestamp : "2026-09-20T11:22:19.246448864Z"
     }
   ]
 }
