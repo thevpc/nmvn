@@ -60,7 +60,7 @@ public class MvnVersionSubCommand {
         boolean commandConsumed = false;
         while (cmd.hasNext() && !commandConsumed) {
             if (oo.subCommand == null) {
-                if (!cmd.matcher()
+                cmd.matcher()
                         .when("scan").asRaw(c -> {
                             c.next();
                             matchScanOptions(c, oo);
@@ -85,13 +85,8 @@ public class MvnVersionSubCommand {
                             c.next();
                             matchCompareOptions(c, oo);
                         })
-                        .anyMatch()) {
-                    if (NSession.of().configureFirst(cmd)) {
-                        // handled by nuts
-                    } else {
-                        cmd.throwUnexpectedArgument();
-                    }
-                }
+                        .withDefaults()
+                        .require();
             }
         }
         if (oo.subCommand == null) {
