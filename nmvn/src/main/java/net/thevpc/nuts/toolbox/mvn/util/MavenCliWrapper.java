@@ -1,9 +1,8 @@
-package net.thevpc.nuts.toolbox.mvn;
+package net.thevpc.nuts.toolbox.mvn.util;
 
 import net.thevpc.nuts.app.NApplication;
 import net.thevpc.nuts.io.NErr;
 import net.thevpc.nuts.io.NOut;
-import net.thevpc.nuts.core.NSession;
 import org.apache.maven.cli.MavenCli;
 
 import java.io.ByteArrayOutputStream;
@@ -11,9 +10,8 @@ import java.io.PrintStream;
 import java.util.HashMap;
 import java.util.Map;
 
-public class MavenCli2 {
+public class MavenCliWrapper {
     ByteArrayOutputStream bos;
-    private NSession session;
     private String workingDirectory;
     private String multiModuleProjectDirectory;
     private String artifactId;
@@ -22,15 +20,14 @@ public class MavenCli2 {
     private Map<String, String> options = new HashMap<>();
 
 
-    public MavenCli2(NSession session) {
-        this.session = session;
+    public MavenCliWrapper() {
     }
 
     public boolean isGrabString() {
         return grabString;
     }
 
-    public MavenCli2 setGrabString(boolean grabString) {
+    public MavenCliWrapper setGrabString(boolean grabString) {
         this.grabString = grabString;
         return this;
     }
@@ -39,7 +36,7 @@ public class MavenCli2 {
         return workingDirectory;
     }
 
-    public MavenCli2 setWorkingDirectory(String workingDirectory) {
+    public MavenCliWrapper setWorkingDirectory(String workingDirectory) {
         this.workingDirectory = workingDirectory;
         return this;
     }
@@ -48,7 +45,7 @@ public class MavenCli2 {
         return multiModuleProjectDirectory;
     }
 
-    public MavenCli2 setMultiModuleProjectDirectory(String multiModuleProjectDirectory) {
+    public MavenCliWrapper setMultiModuleProjectDirectory(String multiModuleProjectDirectory) {
         this.multiModuleProjectDirectory = multiModuleProjectDirectory;
         return this;
     }
@@ -57,7 +54,7 @@ public class MavenCli2 {
         return artifactId;
     }
 
-    public MavenCli2 setArtifactId(String artifactId) {
+    public MavenCliWrapper setArtifactId(String artifactId) {
         this.artifactId = artifactId;
         return this;
     }
@@ -66,7 +63,7 @@ public class MavenCli2 {
         return repoUrl;
     }
 
-    public MavenCli2 setRepoUrl(String repoUrl) {
+    public MavenCliWrapper setRepoUrl(String repoUrl) {
         this.repoUrl = repoUrl;
         return this;
     }

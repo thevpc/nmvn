@@ -9,6 +9,7 @@ import net.thevpc.nmvn.lib.parser.PropertyResolver;
 
 import net.thevpc.nuts.artifact.NId;
 import net.thevpc.nuts.io.NPath;
+import net.thevpc.nuts.util.NException;
 
 import java.io.IOException;
 import java.nio.file.*;
@@ -19,7 +20,7 @@ public class PomScanner {
 
     private final PomParser pomParser = new PomParser();
 
-    public Map<NId, PomArtifact> scan(NMvnConfig config, NPath workingDir) throws IOException {
+    public Map<NId, PomArtifact> scan(NMvnConfig config, NPath workingDir)  {
         List<String> roots = config.getRoots();
         if (roots == null || roots.isEmpty()) {
             roots = Collections.singletonList(".");
@@ -49,40 +50,44 @@ public class PomScanner {
                 }
             }
 
-            Files.walkFileTree(rootPath, new SimpleFileVisitor<Path>() {
-                @Override
-                public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
-                    if (!dir.equals(rootPath) && isTargetOrDistAtPomLevel(dir)) {
-                        return FileVisitResult.SKIP_SUBTREE;
-                    }
-                    Path rel = rootPath.relativize(dir);
-                    if (isExcluded(rel, matchers)) {
-                        return FileVisitResult.SKIP_SUBTREE;
-                    }
-                    return FileVisitResult.CONTINUE;
-                }
-
-                @Override
-                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-                    if ("pom.xml".equals(file.getFileName().toString())) {
-                        if (isInsideTargetOrDistAtPomLevel(file, rootPath)) {
-                            return FileVisitResult.CONTINUE;
+            try {
+                Files.walkFileTree(rootPath, new SimpleFileVisitor<Path>() {
+                    @Override
+                    public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                        if (!dir.equals(rootPath) && isTargetOrDistAtPomLevel(dir)) {
+                            return FileVisitResult.SKIP_SUBTREE;
                         }
-                        Path rel = rootPath.relativize(file);
-                        if (!isExcluded(rel, matchers)) {
-                            try {
-                                PomArtifact artifact = pomParser.parse(NPath.of(file));
-                                NId ga = artifact.toGa();
-                                List<PomArtifact> list = collectedByGa.computeIfAbsent(ga, k -> new ArrayList<>());
-                                list.add(artifact);
-                            } catch (Exception e) {
-                                // Ignore non-maven or malformed helper poms unless critical
+                        Path rel = rootPath.relativize(dir);
+                        if (isExcluded(rel, matchers)) {
+                            return FileVisitResult.SKIP_SUBTREE;
+                        }
+                        return FileVisitResult.CONTINUE;
+                    }
+
+                    @Override
+                    public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                        if ("pom.xml".equals(file.getFileName().toString())) {
+                            if (isInsideTargetOrDistAtPomLevel(file, rootPath)) {
+                                return FileVisitResult.CONTINUE;
+                            }
+                            Path rel = rootPath.relativize(file);
+                            if (!isExcluded(rel, matchers)) {
+                                try {
+                                    PomArtifact artifact = pomParser.parse(NPath.of(file));
+                                    NId ga = artifact.toGa();
+                                    List<PomArtifact> list = collectedByGa.computeIfAbsent(ga, k -> new ArrayList<>());
+                                    list.add(artifact);
+                                } catch (Exception e) {
+                                    // Ignore non-maven or malformed helper poms unless critical
+                                }
                             }
                         }
+                        return FileVisitResult.CONTINUE;
                     }
-                    return FileVisitResult.CONTINUE;
-                }
-            });
+                });
+            } catch (IOException e) {
+                throw NException.ofUncheckedException(e);
+            }
         }
 
         // Check for ambiguous artifacts (same GA found in multiple places)

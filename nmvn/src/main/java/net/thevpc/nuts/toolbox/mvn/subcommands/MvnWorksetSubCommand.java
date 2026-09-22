@@ -1,4 +1,4 @@
-package net.thevpc.nuts.toolbox.mvn;
+package net.thevpc.nuts.toolbox.mvn.subcommands;
 
 import net.thevpc.nmvn.lib.config.NMvnConfig;
 import net.thevpc.nmvn.lib.config.NMvnConfigLoader;
@@ -16,26 +16,22 @@ import net.thevpc.nuts.text.NMsg;
 import net.thevpc.nuts.text.NTextStyle;
 import net.thevpc.nuts.util.NRef;
 
-import java.io.IOException;
 import java.util.*;
 
-public class MvnWorksetCli {
+public class MvnWorksetSubCommand {
 
-    private final NSession session;
     private final VersionService versionService = new VersionService();
 
-    public MvnWorksetCli(NSession session) {
-        this.session = session;
+    public MvnWorksetSubCommand() {
     }
 
-    public int run(String[] args, boolean jsonOutput) {
+    public int run(String[] args) {
         NCmdLine cmd = NCmdLine.of(args);
         NRef<String> subCommand = NRef.ofNull();
         NRef<String> worksetName = NRef.ofNull();
         NRef<String> rootOp = NRef.ofNull();
         NRef<Boolean> recent = NRef.of(false);
         NRef<Boolean> scan = NRef.of(false);
-        NRef<Boolean> jsonOutputRef = NRef.of(jsonOutput);
 
         List<String> roots = new ArrayList<>();
         List<String> excludes = new ArrayList<>();
@@ -46,7 +42,7 @@ public class MvnWorksetCli {
 
         while (cmd.hasNext()) {
             if (subCommand.isNull()) {
-                if (session.configureFirst(cmd)) {
+                if (NSession.of().configureFirst(cmd)) {
                     // handled by nuts
                 } else if (!cmd.matcher()
                         .when("list", "ls").asArg(a -> subCommand.set("list"))
@@ -58,7 +54,6 @@ public class MvnWorksetCli {
                         .when("root", "roots").asArg(a -> subCommand.set("root"))
                         .when("scan").asArg(a -> subCommand.set("scan"))
                         .when("edit").asArg(a -> subCommand.set("edit"))
-                        .when("-j", "--json").asFlag(a -> jsonOutputRef.set(a.booleanValue()))
                         .when("--recent").asFlag(a -> recent.set(a.booleanValue()))
                         .when("--scan").asFlag(a -> scan.set(a.booleanValue()))
                         .when("--name", "--workset").asEntry(a -> worksetName.set(a.stringValue()))
@@ -66,10 +61,9 @@ public class MvnWorksetCli {
                     cmd.throwUnexpectedArgument();
                 }
             } else {
-                if (session.configureFirst(cmd)) {
+                if (NSession.of().configureFirst(cmd)) {
                     // handled by nuts
                 } else if (!cmd.matcher()
-                        .when("-j", "--json").asFlag(a -> jsonOutputRef.set(a.booleanValue()))
                         .when("--recent").asFlag(a -> recent.set(a.booleanValue()))
                         .when("--scan").asFlag(a -> scan.set(a.booleanValue()))
                         .when("--name", "--workset").asEntry(a -> worksetName.set(a.stringValue()))
@@ -128,22 +122,22 @@ public class MvnWorksetCli {
         try {
             switch (subCommand.get()) {
                 case "list":
-                    return doList(recent.get(), jsonOutputRef.get());
+                    return doList(recent.get());
                 case "path":
-                    return doPath(worksetName.get(), workingDir, jsonOutputRef.get());
+                    return doPath(worksetName.get(), workingDir);
                 case "get":
-                    return doGet(worksetName.get(), workingDir, jsonOutputRef.get());
+                    return doGet(worksetName.get(), workingDir);
                 case "set":
                     return doSet(worksetName.get(), workingDir, roots, excludes,
-                            defaultIncrement.get(), snapshotSuffix.get(), cascadePolicy.get(), historyFile.get(), jsonOutputRef.get());
+                            defaultIncrement.get(), snapshotSuffix.get(), cascadePolicy.get(), historyFile.get());
                 case "add-root":
-                    return doAddRoot(worksetName.get(), workingDir, roots, scan.get(), jsonOutputRef.get());
+                    return doAddRoot(worksetName.get(), workingDir, roots, scan.get());
                 case "remove-root":
-                    return doRemoveRoot(worksetName.get(), workingDir, roots, scan.get(), jsonOutputRef.get());
+                    return doRemoveRoot(worksetName.get(), workingDir, roots, scan.get());
                 case "root-list":
-                    return doListRoots(worksetName.get(), workingDir, jsonOutputRef.get());
+                    return doListRoots(worksetName.get(), workingDir);
                 case "scan":
-                    return doScan(worksetName.get(), workingDir, jsonOutputRef.get());
+                    return doScan(worksetName.get(), workingDir);
                 case "edit":
                     return doEdit(worksetName.get(), workingDir);
                 default:
@@ -156,10 +150,10 @@ public class MvnWorksetCli {
         }
     }
 
-    private int doList(boolean recent, boolean jsonOutput) {
+    private int doList(boolean recent) {
         if (recent) {
             List<NPath> recentConfigs = NMvnConfigLoader.loadRecentConfigs();
-            if (jsonOutput) {
+            if (!NOut.isPlain()) {
                 NArrayElementBuilder arr = NElement.ofArrayBuilder();
                 for (NPath p : recentConfigs) {
                     NObjectElementBuilder obj = NElement.ofObjectBuilder();
@@ -167,7 +161,7 @@ public class MvnWorksetCli {
                     obj.set("exists", NElement.ofBoolean(p.exists()));
                     arr.add(obj.build());
                 }
-                NOut.println(NElementWriter.ofJson().formatPlain(arr.build()));
+                NOut.println(arr.build());
                 return 0;
             }
 
@@ -186,7 +180,7 @@ public class MvnWorksetCli {
 
         NPath folder = NMvnConfigLoader.getAppConfigFolder();
         List<NPath> configs = NMvnConfigLoader.listNamedConfigs();
-        if (jsonOutput) {
+        if (!NOut.isPlain()) {
             NArrayElementBuilder arr = NElement.ofArrayBuilder();
             for (NPath p : configs) {
                 NObjectElementBuilder obj = NElement.ofObjectBuilder();
@@ -194,7 +188,7 @@ public class MvnWorksetCli {
                 obj.set("path", NElement.ofString(p.toString()));
                 arr.add(obj.build());
             }
-            NOut.println(NElementWriter.ofJson().formatPlain(arr.build()));
+            NOut.println(arr.build());
             return 0;
         }
 
@@ -209,21 +203,21 @@ public class MvnWorksetCli {
         return 0;
     }
 
-    private int doPath(String name, NPath workingDir, boolean jsonOutput) {
+    private int doPath(String name, NPath workingDir) {
         NPath resolved = NMvnConfigLoader.resolveConfigFile(name, workingDir);
-        if (jsonOutput) {
+        if (!NOut.isPlain()) {
             NObjectElementBuilder obj = NElement.ofObjectBuilder();
             obj.set("name", NElement.ofString(name != null ? name : ""));
             obj.set("path", NElement.ofString(resolved.toString()));
             obj.set("exists", NElement.ofBoolean(resolved.exists()));
-            NOut.println(NElementWriter.ofJson().formatPlain(obj.build()));
+            NOut.println(obj.build());
             return 0;
         }
         NOut.println(resolved.toString());
         return 0;
     }
 
-    private int doGet(String name, NPath workingDir, boolean jsonOutput) throws IOException {
+    private int doGet(String name, NPath workingDir)  {
         NPath resolved = NMvnConfigLoader.resolveConfigFile(name, workingDir);
         if (!resolved.isRegularFile()) {
             NOut.println(NMsg.ofStyled("Workset file not found: " + resolved, NTextStyle.danger()));
@@ -235,8 +229,8 @@ public class MvnWorksetCli {
             return 1;
         }
         NMvnConfigLoader.recordRecentConfig(resolved);
-        if (jsonOutput) {
-            NOut.println(NElementWriter.ofJson().formatPlain(elem));
+        if (!NOut.isPlain()) {
+            NOut.println(elem);
         } else {
             NOut.println(NElementWriter.ofTson().formatter(NElementFormatter.ofPretty()).format(elem));
         }
@@ -245,7 +239,7 @@ public class MvnWorksetCli {
 
     private int doSet(String name, NPath workingDir, List<String> roots, List<String> excludes,
                       String defaultIncrement, String snapshotSuffix, String cascadePolicy,
-                      String historyFile, boolean jsonOutput) throws IOException {
+                      String historyFile)  {
         NPath targetFile = resolveTargetForSave(name, workingDir);
         NMvnConfig config = targetFile.isRegularFile() ? NMvnConfigLoader.load(targetFile) : new NMvnConfig();
 
@@ -273,18 +267,18 @@ public class MvnWorksetCli {
         }
         NMvnConfigLoader.save(config, targetFile);
 
-        if (jsonOutput) {
+        if (!NOut.isPlain()) {
             NObjectElementBuilder obj = NElement.ofObjectBuilder();
             obj.set("status", NElement.ofString("saved"));
             obj.set("path", NElement.ofString(targetFile.toString()));
-            NOut.println(NElementWriter.ofJson().formatPlain(obj.build()));
+            NOut.println(obj.build());
         } else {
             NOut.println(NMsg.ofStyled("Saved workset to: " + targetFile, NTextStyle.success()));
         }
         return 0;
     }
 
-    private int doAddRoot(String worksetName, NPath workingDir, List<String> folders, boolean scan, boolean jsonOutput) throws IOException {
+    private int doAddRoot(String worksetName, NPath workingDir, List<String> folders, boolean scan)  {
         if (folders.isEmpty()) {
             NOut.println(NMsg.ofStyled("No folders specified to add. Usage: nmvn workset add-root <folder>... [--scan]", NTextStyle.warn()));
             return 1;
@@ -346,7 +340,7 @@ public class MvnWorksetCli {
             scanResult = versionService.scan(config, workingDir);
         }
 
-        if (jsonOutput) {
+        if (!NOut.isPlain()) {
             NObjectElementBuilder res = NElement.ofObjectBuilder();
             res.set("status", NElement.ofString("success"));
             res.set("workset", NElement.ofString(configFile.toString()));
@@ -374,7 +368,7 @@ public class MvnWorksetCli {
                 }
                 res.set("artifacts", artsArr.build());
             }
-            NOut.println(NElementWriter.ofJson().formatPlain(res.build()));
+            NOut.println(res.build());
             return 0;
         }
 
@@ -402,7 +396,7 @@ public class MvnWorksetCli {
         return 0;
     }
 
-    private int doRemoveRoot(String worksetName, NPath workingDir, List<String> folders, boolean scan, boolean jsonOutput) throws IOException {
+    private int doRemoveRoot(String worksetName, NPath workingDir, List<String> folders, boolean scan)  {
         if (folders.isEmpty()) {
             NOut.println(NMsg.ofStyled("No folders specified to remove. Usage: nmvn workset remove-root <folder>... [--scan]", NTextStyle.warn()));
             return 1;
@@ -450,7 +444,7 @@ public class MvnWorksetCli {
             scanResult = versionService.scan(config, workingDir);
         }
 
-        if (jsonOutput) {
+        if (!NOut.isPlain()) {
             NObjectElementBuilder res = NElement.ofObjectBuilder();
             res.set("status", NElement.ofString("success"));
             res.set("workset", NElement.ofString(configFile.toString()));
@@ -478,7 +472,7 @@ public class MvnWorksetCli {
                 }
                 res.set("artifacts", artsArr.build());
             }
-            NOut.println(NElementWriter.ofJson().formatPlain(res.build()));
+            NOut.println(res.build());
             return 0;
         }
 
@@ -501,7 +495,7 @@ public class MvnWorksetCli {
         return 0;
     }
 
-    private int doListRoots(String worksetName, NPath workingDir, boolean jsonOutput) throws IOException {
+    private int doListRoots(String worksetName, NPath workingDir)  {
         NPath configFile = NMvnConfigLoader.resolveConfigFile(worksetName, workingDir);
         if (!configFile.isRegularFile()) {
             NOut.println(NMsg.ofStyled("Workset file not found: " + configFile, NTextStyle.danger()));
@@ -511,7 +505,7 @@ public class MvnWorksetCli {
         List<String> roots = config.getRoots();
         if (roots == null) roots = Collections.emptyList();
 
-        if (jsonOutput) {
+        if (!NOut.isPlain()) {
             NArrayElementBuilder arr = NElement.ofArrayBuilder();
             for (String r : roots) {
                 NObjectElementBuilder obj = NElement.ofObjectBuilder();
@@ -521,7 +515,7 @@ public class MvnWorksetCli {
                 obj.set("exists", NElement.ofBoolean(p.isDirectory()));
                 arr.add(obj.build());
             }
-            NOut.println(NElementWriter.ofJson().formatPlain(arr.build()));
+            NOut.println(arr.build());
             return 0;
         }
 
@@ -539,10 +533,10 @@ public class MvnWorksetCli {
         return 0;
     }
 
-    private int doScan(String worksetName, NPath workingDir, boolean jsonOutput) throws IOException {
+    private int doScan(String worksetName, NPath workingDir)  {
         NPath configFile = NMvnConfigLoader.resolveConfigFile(worksetName, workingDir);
-        MvnVersionCli versionCli = new MvnVersionCli(session);
-        return versionCli.run(new String[]{"scan", "--workset", configFile.toString()}, jsonOutput);
+        MvnVersionSubCommand versionCli = new MvnVersionSubCommand();
+        return versionCli.run(new String[]{"scan", "--workset", configFile.toString()});
     }
 
     private void renderScanSummary(ScanResult scan) {
@@ -554,7 +548,7 @@ public class MvnWorksetCli {
         }
     }
 
-    private int doEdit(String name, NPath workingDir) throws IOException {
+    private int doEdit(String name, NPath workingDir)  {
         NPath targetFile = resolveTargetForSave(name, workingDir);
 
         if (!targetFile.exists()) {

@@ -3,16 +3,18 @@ package net.thevpc.nuts.toolbox.mvn;
 import net.thevpc.nuts.app.NApp;
 import net.thevpc.nuts.app.NApplication;
 import net.thevpc.nuts.app.NAppRun;
-import net.thevpc.nuts.cmdline.NArg;
 import net.thevpc.nuts.cmdline.NCmdLine;
 import net.thevpc.nuts.command.NExecutionException;
-import net.thevpc.nuts.core.NSession;
 import net.thevpc.nuts.io.NOut;
 import net.thevpc.nuts.io.NPath;
 import net.thevpc.nuts.text.NMsg;
+import net.thevpc.nuts.toolbox.mvn.subcommands.MvnCleanSubCommand;
+import net.thevpc.nuts.toolbox.mvn.subcommands.MvnJarCompareSubCommand;
+import net.thevpc.nuts.toolbox.mvn.subcommands.MvnVersionSubCommand;
+import net.thevpc.nuts.toolbox.mvn.subcommands.MvnWorksetSubCommand;
+import net.thevpc.nuts.toolbox.mvn.util.MavenCliWrapper;
 import net.thevpc.nuts.util.NRef;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -20,8 +22,8 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 @NApp
-public class NMvnMain  {
-    private static final Logger LOG= Logger.getLogger(NMvnMain.class.getName());
+public class NMvnMain {
+    private static final Logger LOG = Logger.getLogger(NMvnMain.class.getName());
 //    public static void main(String[] args) {
 //        main0(new String[]{
 //                "--json", "--get", "test:classpath:1.3", "vpc-public-maven"
@@ -29,8 +31,6 @@ public class NMvnMain  {
 //    }
 
     public static class Options {
-
-        boolean json = false;
 
     }
 
@@ -43,31 +43,29 @@ public class NMvnMain  {
         NRef<String> command = NRef.ofNull();
         List<String> args2 = new ArrayList<>();
         Options o = new Options();
-        NSession session = NSession.of();
         NCmdLine cmd = NApplication.of().cmdLine();
-        while (cmd.hasNext()) {
-            if (command.isNull()) {
-                if (session.configureFirst(cmd)) {
-                    // handled by nuts
-                } else if (!cmd.matcher()
-                        .when("-j", "--json").asFlag(a -> o.json = a.booleanValue())
-                        .when("build").asArg(a -> command.set("build"))
-                        .when("get").asArg(a -> command.set("get"))
-                        .when("version").asArg(a -> command.set("version"))
-                        .when("workset", "ws", "config").asArg(a -> command.set("workset"))
-                        .anyMatch()) {
-                    command.set("default");
-                    args2.add(cmd.next().get().image());
-                }
-            } else {
-                args2.add(cmd.next().get().image());
-            }
-        }
+
+        cmd.matcher()
+                .when("build").asArg(a -> command.set("build"))
+                .when("get").asArg(a -> command.set("get"))
+                .when("version").asArg(a -> command.set("version"))
+                .when("workset", "ws", "config").asArg(a -> command.set("workset"))
+                .when("clean").asArg(a -> command.set("clean"))
+                .when("diff-jar").asArg(a -> command.set("diff-jar"))
+                .whenNonOption().asRaw(c -> {
+                    if (command.get() == null) {
+                        command.set("default");
+                    }
+                    args2.addAll(c.nextAllAsStringList());
+                })
+                .withDefaults()
+                .requireAll();
+
         if (command.isNull()) {
             command.set("build");
         }
         if (cmd.isExecMode()) {
-            MavenCli2 cli = new MavenCli2(session);
+            MavenCliWrapper cli = new MavenCliWrapper();
 
             String[] args2Arr = args2.toArray(new String[0]);
             switch (command.get()) {
@@ -82,7 +80,7 @@ public class NMvnMain  {
                             defaultArgs.add(ar);
                         }
                     }
-                    int r = callMvn(cli,session, o, defaultArgs.toArray(new String[0]));
+                    int r = callMvn(cli, o, defaultArgs.toArray(new String[0]));
                     if (r == NExecutionException.SUCCESS) {
                         return;
                     } else {
@@ -104,9 +102,9 @@ public class NMvnMain  {
                     if (repo != null) {
                         cli.setRepoUrl(repo);
                     }
-                    NPath dir = createTempPom(session);
+                    NPath dir = createTempPom();
                     cli.setWorkingDirectory(dir.toString());
-                    int r = callMvn(cli,session, o,  "dependency:get");
+                    int r = callMvn(cli, o, "dependency:get");
                     dir.delete(true);
                     if (r == NExecutionException.SUCCESS) {
                         return;
@@ -115,8 +113,8 @@ public class NMvnMain  {
                     }
                 }
                 case "version": {
-                    MvnVersionCli versionCli = new MvnVersionCli(session);
-                    int r = versionCli.run(args2Arr, o.json);
+                    MvnVersionSubCommand versionCli = new MvnVersionSubCommand();
+                    int r = versionCli.run(args2Arr);
                     if (r == NExecutionException.SUCCESS) {
                         return;
                     } else {
@@ -125,30 +123,37 @@ public class NMvnMain  {
                 }
                 case "workset":
                 case "config": {
-                    MvnWorksetCli worksetCli = new MvnWorksetCli(session);
-                    int r = worksetCli.run(args2Arr, o.json);
+                    MvnWorksetSubCommand worksetCli = new MvnWorksetSubCommand();
+                    int r = worksetCli.run(args2Arr);
                     if (r == NExecutionException.SUCCESS) {
                         return;
                     } else {
                         throw new NExecutionException(NMsg.ofC("Workset command failed with code %s", r), r);
                     }
                 }
+                case "clean": {
+                    MvnCleanSubCommand cleanCli = new MvnCleanSubCommand();
+                    int r = cleanCli.run(args2Arr);
+                    if (r == NExecutionException.SUCCESS) {
+                        return;
+                    } else {
+                        throw new NExecutionException(NMsg.ofC("Clean command failed with code %s", r), r);
+                    }
+                }
+                case "diff-jar": {
+                    MvnJarCompareSubCommand diffJarCli = new MvnJarCompareSubCommand();
+                    int r = diffJarCli.run(args2Arr);
+                    if (r == NExecutionException.SUCCESS) {
+                    } else {
+                        throw new NExecutionException(NMsg.ofC("Diff jar command failed with code %s", r), r);
+                    }
+                }
             }
         }
     }
 
-//    public void prepareM2Home(NSession session){
-//        Path configFolder = session.getConfigFolder();
-//        if(!Files.isRegularFile(configFolder.resolve(".mvn/maven.config"))){
-//            if(!Files.isDirectory(configFolder.resolve(".mvn"))){
-//                Files.createDirectories(configFolder.resolve(".mvn"));
-//            }
-//            Files.
-//        }
-//        maven.multiModuleProjectDirectory
-//    }
-    private static int callMvn(MavenCli2 cli, NSession session, Options options, String... args) {
-       if (options.json) {
+    private static int callMvn(MavenCliWrapper cli, Options options, String... args) {
+        if (!NOut.isPlain()) {
             try {
                 cli.setGrabString(true);
                 int r = cli.doMain(args);
@@ -164,8 +169,8 @@ public class NMvnMain  {
                 }
                 return r;
             } catch (Exception ex) {
-                LOG.log(Level.FINE,"error executing mvn command "+ Arrays.toString(args),ex);//e.printStackTrace();
-                session.out().println("{'result':'error'}");
+                LOG.log(Level.FINE, "error executing mvn command " + Arrays.toString(args), ex);//e.printStackTrace();
+                NOut.println("{'result':'error'}");
                 return 1;
             }
         } else {
@@ -173,7 +178,7 @@ public class NMvnMain  {
         }
     }
 
-    private static NPath createTempPom(NSession session) {
+    private static NPath createTempPom() {
         NPath d = NPath.ofTempFolder();
         d.resolve("pom.xml").writeString("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
                 + "<project xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns=\"http://maven.apache.org/POM/4.0.0\"\n"
@@ -214,8 +219,4 @@ public class NMvnMain  {
         return d;
     }
 
-    public static int[] delete(NPath file) {
-        file.delete(true);
-        return new int[]{1, 0};
-    }
 }

@@ -1,13 +1,17 @@
 package net.thevpc.nuts.toolbox.mvn;
 
 import net.thevpc.nuts.Nuts;
-import net.thevpc.nuts.core.NSession;
 import net.thevpc.nuts.io.NPath;
+import net.thevpc.nuts.toolbox.mvn.subcommands.MvnConfigSubCommand;
+import net.thevpc.nuts.toolbox.mvn.subcommands.MvnVersionSubCommand;
+import net.thevpc.nuts.toolbox.mvn.subcommands.MvnWorksetSubCommand;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
+
+import java.io.IOException;
 
 public class NMvnCliTest {
 
@@ -55,15 +59,14 @@ public class NMvnCliTest {
                 "  </dependencies>\n" +
                 "</project>");
 
-        NSession session = NSession.of();
-        MvnVersionCli cli = new MvnVersionCli(session);
+        MvnVersionSubCommand cli = new MvnVersionSubCommand();
 
         // Run scan
-        int scanCode = cli.run(new String[]{"scan", "--root", root.toString()}, false);
+        int scanCode = cli.run(new String[]{"scan", "--root", root.toString()});
         Assert.assertEquals(0, scanCode);
 
         // Run bump with --dry
-        int bumpCode = cli.run(new String[]{"bump", "--root", root.toString(), "-a", "com.cli:mod1=1.0.0.0", "--dry"}, false);
+        int bumpCode = cli.run(new String[]{"bump", "--root", root.toString(), "-a", "com.cli:mod1=1.0.0.0", "--dry"});
         Assert.assertEquals(0, bumpCode);
 
         // Dry-run should not modify files on disk
@@ -71,7 +74,7 @@ public class NMvnCliTest {
         Assert.assertTrue(mod1Content.contains("<version>1.0.0-SNAPSHOT</version>"));
 
         // Run bump default (non-dry, applies changes)
-        int applyCode = cli.run(new String[]{"bump", "--root", root.toString(), "-a", "com.cli:mod1=1.0.0.0"}, false);
+        int applyCode = cli.run(new String[]{"bump", "--root", root.toString(), "-a", "com.cli:mod1=1.0.0.0"});
         Assert.assertEquals(0, applyCode);
 
         // Now files on disk should be updated
@@ -111,11 +114,10 @@ public class NMvnCliTest {
                 "  </dependencies>\n" +
                 "</project>");
 
-        NSession session = NSession.of();
-        MvnVersionCli cli = new MvnVersionCli(session);
+        MvnVersionSubCommand cli = new MvnVersionSubCommand();
 
         // Clean workspace should return 0
-        int checkClean = cli.run(new String[]{"check", "--root", root.toString()}, false);
+        int checkClean = cli.run(new String[]{"check", "--root", root.toString()});
         Assert.assertEquals(0, checkClean);
 
         // Now introduce a version discrepancy in mod2
@@ -135,36 +137,34 @@ public class NMvnCliTest {
                 "</project>");
 
         // Discrepant workspace should return 1
-        int checkDiscrepancy = cli.run(new String[]{"check", "--root", root.toString()}, false);
+        int checkDiscrepancy = cli.run(new String[]{"check", "--root", root.toString()});
         Assert.assertEquals(1, checkDiscrepancy);
 
         // JSON mode should also return 1
-        int checkJson = cli.run(new String[]{"check", "--root", root.toString(), "--json"}, false);
+        int checkJson = cli.run(new String[]{"check", "--root", root.toString(), "--json"});
         Assert.assertEquals(1, checkJson);
     }
 
     @Test
     public void testConfigListAndRecent() throws Exception {
-        NSession session = NSession.of();
-        MvnConfigCli cli = new MvnConfigCli(session);
+        MvnConfigSubCommand cli = new MvnConfigSubCommand();
 
         // List named configs in Nuts config folder
-        int listCode = cli.run(new String[]{"list"}, false);
+        int listCode = cli.run(new String[]{"list"});
         Assert.assertEquals(0, listCode);
 
         // List recent configs
-        int recentCode = cli.run(new String[]{"list", "--recent"}, false);
+        int recentCode = cli.run(new String[]{"list", "--recent"});
         Assert.assertEquals(0, recentCode);
 
         // List recent configs JSON
-        int recentJsonCode = cli.run(new String[]{"list", "--recent", "--json"}, false);
+        int recentJsonCode = cli.run(new String[]{"list", "--recent", "--json"});
         Assert.assertEquals(0, recentJsonCode);
     }
 
     @Test
-    public void testConfigSetGetAndPath() throws Exception {
-        NSession session = NSession.of();
-        MvnConfigCli cli = new MvnConfigCli(session);
+    public void testConfigSetGetAndPath()  {
+        MvnConfigSubCommand cli = new MvnConfigSubCommand();
 
         NPath cfg = NPath.of(temp.getRoot()).resolve("test-cfg.tson");
 
@@ -174,7 +174,7 @@ public class NMvnCliTest {
                 "--root", "module-a",
                 "--exclude", "target/**",
                 "--default-increment", "patch"
-        }, false);
+        });
         Assert.assertEquals(0, setCode);
         Assert.assertTrue(cfg.isRegularFile());
 
@@ -183,24 +183,24 @@ public class NMvnCliTest {
         Assert.assertTrue(content.contains("patch"));
 
         // Path
-        int pathCode = cli.run(new String[]{"path", cfg.toString()}, false);
+        int pathCode = cli.run(new String[]{"path", cfg.toString()});
         Assert.assertEquals(0, pathCode);
 
         // Path JSON
-        int pathJsonCode = cli.run(new String[]{"path", cfg.toString(), "--json"}, false);
+        int pathJsonCode = cli.run(new String[]{"path", cfg.toString(), "--json"});
         Assert.assertEquals(0, pathJsonCode);
 
         // Get
-        int getCode = cli.run(new String[]{"get", cfg.toString()}, false);
+        int getCode = cli.run(new String[]{"get", cfg.toString()});
         Assert.assertEquals(0, getCode);
 
         // Get JSON
-        int getJsonCode = cli.run(new String[]{"get", cfg.toString(), "--json"}, false);
+        int getJsonCode = cli.run(new String[]{"get", cfg.toString(), "--json"});
         Assert.assertEquals(0, getJsonCode);
     }
 
     @Test
-    public void testWorksetAddAndRemoveRootsWithScan() throws Exception {
+    public void testWorksetAddAndRemoveRootsWithScan() throws IOException {
         NPath root = NPath.of(temp.newFolder("ws-test"));
         NPath mod1 = root.resolve("mod1");
         NPath mod2 = root.resolve("mod2");
@@ -221,8 +221,7 @@ public class NMvnCliTest {
                 "  <version>1.0.0</version>\n" +
                 "</project>");
 
-        NSession session = NSession.of();
-        MvnWorksetCli cli = new MvnWorksetCli(session);
+        MvnWorksetSubCommand cli = new MvnWorksetSubCommand();
         NPath wsFile = root.resolve("workset.tson");
 
         // Add mod1 and mod2 with scan
@@ -231,7 +230,7 @@ public class NMvnCliTest {
                 "--workset", wsFile.toString(),
                 mod1.toString(), mod2.toString(),
                 "--scan"
-        }, false);
+        });
         Assert.assertEquals(0, addCode);
         Assert.assertTrue(wsFile.isRegularFile());
 
@@ -240,11 +239,11 @@ public class NMvnCliTest {
         Assert.assertTrue(content.contains("mod2"));
 
         // List roots
-        int listRootsCode = cli.run(new String[]{"root", "list", "--workset", wsFile.toString()}, false);
+        int listRootsCode = cli.run(new String[]{"root", "list", "--workset", wsFile.toString()});
         Assert.assertEquals(0, listRootsCode);
 
         // Scan workset directly
-        int scanCode = cli.run(new String[]{"scan", "--workset", wsFile.toString()}, false);
+        int scanCode = cli.run(new String[]{"scan", "--workset", wsFile.toString()});
         Assert.assertEquals(0, scanCode);
 
         // Remove mod1 with scan
@@ -253,7 +252,7 @@ public class NMvnCliTest {
                 "--workset", wsFile.toString(),
                 mod1.toString(),
                 "--scan"
-        }, false);
+        });
         Assert.assertEquals(0, removeCode);
 
         String updatedContent = wsFile.readString();
@@ -262,7 +261,7 @@ public class NMvnCliTest {
     }
 
     @Test
-    public void testCliScanSkipsTargetAndDistAtPomLevel() throws Exception {
+    public void testCliScanSkipsTargetAndDistAtPomLevel() throws IOException {
         NPath root = NPath.of(temp.newFolder("cli-skip-test"));
         NPath warDir = root.resolve("app").resolve("nrepo-war");
 
@@ -302,15 +301,14 @@ public class NMvnCliTest {
                 "  <version>1.0.0</version>\n" +
                 "</project>");
 
-        NSession session = NSession.of();
-        MvnVersionCli cli = new MvnVersionCli(session);
+        MvnVersionSubCommand cli = new MvnVersionSubCommand();
 
-        int scanCode = cli.run(new String[]{"scan", "--root", root.toString()}, false);
+        int scanCode = cli.run(new String[]{"scan", "--root", root.toString()});
         Assert.assertEquals(0, scanCode);
     }
 
     @Test
-    public void testCliArtifactOptionFormats() throws Exception {
+    public void testCliArtifactOptionFormats() throws IOException {
         NPath root = NPath.of(temp.newFolder("cli-format-test"));
         NPath mod1 = root.resolve("mod1");
 
@@ -322,33 +320,32 @@ public class NMvnCliTest {
                 "  <version>1.0.0-SNAPSHOT</version>\n" +
                 "</project>");
 
-        NSession session = NSession.of();
-        MvnVersionCli cli = new MvnVersionCli(session);
+        MvnVersionSubCommand cli = new MvnVersionSubCommand();
 
         // Test -a with '#' delimiter
-        int c1 = cli.run(new String[]{"bump", "--root", root.toString(), "-a", "com.cli:mod1#1.0.0.0", "--dry"}, false);
+        int c1 = cli.run(new String[]{"bump", "--root", root.toString(), "-a", "com.cli:mod1#1.0.0.0", "--dry"});
         Assert.assertEquals(0, c1);
 
         // Test -a= with '#' delimiter
-        int c2 = cli.run(new String[]{"bump", "--root", root.toString(), "-a=com.cli:mod1#1.0.0.0", "--dry"}, false);
+        int c2 = cli.run(new String[]{"bump", "--root", root.toString(), "-a=com.cli:mod1#1.0.0.0", "--dry"});
         Assert.assertEquals(0, c2);
 
         // Test --artifact= with '#' delimiter
-        int c3 = cli.run(new String[]{"bump", "--root", root.toString(), "--artifact=com.cli:mod1#1.0.0.0", "--dry"}, false);
+        int c3 = cli.run(new String[]{"bump", "--root", root.toString(), "--artifact=com.cli:mod1#1.0.0.0", "--dry"});
         Assert.assertEquals(0, c3);
 
         // Test -a= with '=' delimiter
-        int c4 = cli.run(new String[]{"bump", "--root", root.toString(), "-a=com.cli:mod1=1.0.0.0", "--dry"}, false);
+        int c4 = cli.run(new String[]{"bump", "--root", root.toString(), "-a=com.cli:mod1=1.0.0.0", "--dry"});
         Assert.assertEquals(0, c4);
 
         // Apply using -a=com.cli:mod1#1.2.0-SNAPSHOT
-        int c5 = cli.run(new String[]{"bump", "--root", root.toString(), "-a=com.cli:mod1#1.2.0-SNAPSHOT"}, false);
+        int c5 = cli.run(new String[]{"bump", "--root", root.toString(), "-a=com.cli:mod1#1.2.0-SNAPSHOT"});
         Assert.assertEquals(0, c5);
         Assert.assertTrue(mod1.resolve("pom.xml").readString().contains("<version>1.2.0-SNAPSHOT</version>"));
     }
 
     @Test
-    public void testVersionUpdateSubcommandWithReleaseImmutability() throws Exception {
+    public void testVersionUpdateSubcommandWithReleaseImmutability() throws IOException {
         NPath root = NPath.of(temp.newFolder("cli-update-immutability-test"));
         NPath modA = root.resolve("mod-a");
         NPath modB = root.resolve("mod-b");
@@ -395,11 +392,10 @@ public class NMvnCliTest {
                 "  </dependencies>\n" +
                 "</project>");
 
-        NSession session = NSession.of();
-        MvnVersionCli cli = new MvnVersionCli(session);
+        MvnVersionSubCommand cli = new MvnVersionSubCommand();
 
         // Update mod-a to 1.0.0.0
-        int code = cli.run(new String[]{"update", "--root", root.toString(), "-a", "com.cli:mod-a#1.0.0.0"}, false);
+        int code = cli.run(new String[]{"update", "--root", root.toString(), "-a", "com.cli:mod-a#1.0.0.0"});
         Assert.assertEquals(0, code);
 
         // 1. mod-a should be 1.0.0.0
@@ -418,7 +414,7 @@ public class NMvnCliTest {
     }
 
     @Test
-    public void testVersionBumpSnapshotIdempotencyAndForce() throws Exception {
+    public void testVersionBumpSnapshotIdempotencyAndForce() throws IOException {
         NPath root = NPath.of(temp.newFolder("cli-bump-force-test"));
         NPath mod1 = root.resolve("mod1");
 
@@ -430,22 +426,21 @@ public class NMvnCliTest {
                 "  <version>1.2.1-SNAPSHOT</version>\n" +
                 "</project>");
 
-        NSession session = NSession.of();
-        MvnVersionCli cli = new MvnVersionCli(session);
+        MvnVersionSubCommand cli = new MvnVersionSubCommand();
 
         // Running bump --patch without --force on an existing snapshot should NOT advance the version
-        int c1 = cli.run(new String[]{"bump", "--root", root.toString(), "-a", "com.cli:mod1", "--patch"}, false);
+        int c1 = cli.run(new String[]{"bump", "--root", root.toString(), "-a", "com.cli:mod1", "--patch"});
         Assert.assertEquals(0, c1);
         Assert.assertTrue(mod1.resolve("pom.xml").readString().contains("<version>1.2.1-SNAPSHOT</version>"));
 
         // Running bump --patch with --force SHOULD advance the snapshot to 1.2.2-SNAPSHOT
-        int c2 = cli.run(new String[]{"bump", "--root", root.toString(), "-a", "com.cli:mod1", "--patch", "--force"}, false);
+        int c2 = cli.run(new String[]{"bump", "--root", root.toString(), "-a", "com.cli:mod1", "--patch", "--force"});
         Assert.assertEquals(0, c2);
         Assert.assertTrue(mod1.resolve("pom.xml").readString().contains("<version>1.2.2-SNAPSHOT</version>"));
     }
 
     @Test
-    public void testVersionBumpAutoIncrementFlags() throws Exception {
+    public void testVersionBumpAutoIncrementFlags() throws IOException {
         NPath root = NPath.of(temp.newFolder("cli-bump-flags-test"));
         NPath mod1 = root.resolve("mod1");
 
@@ -458,11 +453,10 @@ public class NMvnCliTest {
                 "  <version>1.2.0</version>\n" +
                 "</project>");
 
-        NSession session = NSession.of();
-        MvnVersionCli cli = new MvnVersionCli(session);
+        MvnVersionSubCommand cli = new MvnVersionSubCommand();
 
         // Bump minor: 1.2.0 -> 1.3.0-SNAPSHOT
-        int c1 = cli.run(new String[]{"bump", "--root", root.toString(), "-a", "com.cli:mod1", "--minor"}, false);
+        int c1 = cli.run(new String[]{"bump", "--root", root.toString(), "-a", "com.cli:mod1", "--minor"});
         Assert.assertEquals(0, c1);
         Assert.assertTrue(mod1.resolve("pom.xml").readString().contains("<version>1.3.0-SNAPSHOT</version>"));
 
@@ -476,13 +470,13 @@ public class NMvnCliTest {
                 "</project>");
 
         // Bump major across whole workspace (no -a passed): 1.0.0 -> 2.0.0-SNAPSHOT
-        int c2 = cli.run(new String[]{"bump", "--root", root.toString(), "--major"}, false);
+        int c2 = cli.run(new String[]{"bump", "--root", root.toString(), "--major"});
         Assert.assertEquals(0, c2);
         Assert.assertTrue(mod1.resolve("pom.xml").readString().contains("<version>2.0.0-SNAPSHOT</version>"));
     }
 
     @Test
-    public void testVersionUpdateCascadeReferencesOption() throws Exception {
+    public void testVersionUpdateCascadeReferencesOption() throws IOException {
         NPath root = NPath.of(temp.newFolder("cli-update-cascade-refs-test"));
         NPath modA = root.resolve("mod-a");
         NPath modB = root.resolve("mod-b");
@@ -515,11 +509,10 @@ public class NMvnCliTest {
                 "  </dependencies>\n" +
                 "</project>");
 
-        NSession session = NSession.of();
-        MvnVersionCli cli = new MvnVersionCli(session);
+        MvnVersionSubCommand cli = new MvnVersionSubCommand();
 
         // Update external dependency org.yaml:snakeyaml#2.2 with --cascade=references
-        int c1 = cli.run(new String[]{"update", "--root", root.toString(), "org.yaml:snakeyaml#2.2", "--cascade=references"}, false);
+        int c1 = cli.run(new String[]{"update", "--root", root.toString(), "org.yaml:snakeyaml#2.2", "--cascade=references"});
         Assert.assertEquals(0, c1);
 
         String bContent1 = modB.resolve("pom.xml").readString();
@@ -529,7 +522,7 @@ public class NMvnCliTest {
         Assert.assertTrue(bContent1.contains("<artifactId>mod-b</artifactId>\n  <version>2.0.0</version>"));
 
         // Update internal dependency com.cli:mod-a#1.1.0 with --cascade=references
-        int c2 = cli.run(new String[]{"update", "--root", root.toString(), "com.cli:mod-a#1.1.0", "--cascade=references"}, false);
+        int c2 = cli.run(new String[]{"update", "--root", root.toString(), "com.cli:mod-a#1.1.0", "--cascade=references"});
         Assert.assertEquals(0, c2);
 
         String aContent = modA.resolve("pom.xml").readString();
@@ -541,7 +534,7 @@ public class NMvnCliTest {
     }
 
     @Test
-    public void testVersionUpdateCascadeNone() throws Exception {
+    public void testVersionUpdateCascadeNone() throws IOException {
         NPath root = NPath.of(temp.newFolder("cli-update-cascade-none-test"));
         NPath modA = root.resolve("mod-a");
         NPath modB = root.resolve("mod-b");
@@ -569,11 +562,10 @@ public class NMvnCliTest {
                 "  </dependencies>\n" +
                 "</project>");
 
-        NSession session = NSession.of();
-        MvnVersionCli cli = new MvnVersionCli(session);
+        MvnVersionSubCommand cli = new MvnVersionSubCommand();
 
         // Update com.cli:mod-a#1.2.0 with --cascade=none
-        int code = cli.run(new String[]{"update", "--root", root.toString(), "com.cli:mod-a#1.2.0", "--cascade=none"}, false);
+        int code = cli.run(new String[]{"update", "--root", root.toString(), "com.cli:mod-a#1.2.0", "--cascade=none"});
         Assert.assertEquals(0, code);
 
         String aContent = modA.resolve("pom.xml").readString();

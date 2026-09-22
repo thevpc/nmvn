@@ -21,11 +21,11 @@ public class VersionService {
     private final PomScanner scanner = new PomScanner();
     private final PomModifier modifier = new PomModifier();
 
-    public ScanResult scan(NMvnConfig config, NPath workingDir) throws IOException {
+    public ScanResult scan(NMvnConfig config, NPath workingDir) {
         return scan(config, workingDir, true);
     }
 
-    public ScanResult scan(NMvnConfig config, NPath workingDir, boolean detectCycles) throws IOException {
+    public ScanResult scan(NMvnConfig config, NPath workingDir, boolean detectCycles)  {
         Map<NId, PomArtifact> artifacts = scanner.scan(config, workingDir);
         MavenDependencyGraph graph = new MavenDependencyGraph(artifacts);
         if (detectCycles) {
@@ -34,19 +34,19 @@ public class VersionService {
         return new ScanResult(artifacts, graph);
     }
 
-    public DiagnosticReport check(NMvnConfig config, NPath workingDir) throws IOException {
+    public DiagnosticReport check(NMvnConfig config, NPath workingDir)  {
         ScanResult scanResult = scan(config, workingDir, false);
         return new ArtifactChecker().check(scanResult, config);
     }
 
     public BumpResult bump(NMvnConfig config, NPath workingDir, List<BumpInstruction> explicitBumps,
-                           Boolean cascadeVersionsOverride, boolean apply) throws IOException {
+                           Boolean cascadeVersionsOverride, boolean apply)  {
         return bump(config, workingDir, explicitBumps, null, cascadeVersionsOverride, false, apply);
     }
 
     public BumpResult bump(NMvnConfig config, NPath workingDir, List<BumpInstruction> explicitBumps,
                            BumpPolicy.IncrementType incrementOverride,
-                           Boolean cascadeVersionsOverride, boolean force, boolean apply) throws IOException {
+                           Boolean cascadeVersionsOverride, boolean force, boolean apply)  {
         BumpPolicy.CascadePolicy cp = cascadeVersionsOverride == null ? null :
                 (cascadeVersionsOverride ? BumpPolicy.CascadePolicy.CASCADE_VERSIONS : BumpPolicy.CascadePolicy.CASCADE_REFERENCES_ONLY);
         return bump(config, workingDir, explicitBumps, incrementOverride, cp, force, apply);
@@ -54,7 +54,7 @@ public class VersionService {
 
     public BumpResult bump(NMvnConfig config, NPath workingDir, List<BumpInstruction> explicitBumps,
                            BumpPolicy.IncrementType incrementOverride,
-                           BumpPolicy.CascadePolicy cascadePolicyOverride, boolean force, boolean apply) throws IOException {
+                           BumpPolicy.CascadePolicy cascadePolicyOverride, boolean force, boolean apply)  {
         ScanResult scanResult = scan(config, workingDir);
         Map<NId, PomArtifact> artifacts = scanResult.getArtifacts();
         MavenDependencyGraph graph = scanResult.getGraph();
@@ -149,13 +149,13 @@ public class VersionService {
     }
 
     public BumpResult update(NMvnConfig config, NPath workingDir, Map<NId, String> explicitUpdates,
-                             boolean apply) throws IOException {
+                             boolean apply)  {
         return update(config, workingDir, explicitUpdates, null, apply);
     }
 
     public BumpResult update(NMvnConfig config, NPath workingDir, Map<NId, String> explicitUpdates,
                              BumpPolicy.CascadePolicy cascadePolicyOverride,
-                             boolean apply) throws IOException {
+                             boolean apply)  {
         ScanResult scanResult = scan(config, workingDir);
         Map<NId, PomArtifact> artifacts = scanResult.getArtifacts();
         MavenDependencyGraph graph = scanResult.getGraph();
@@ -213,7 +213,7 @@ public class VersionService {
     }
 
     public ReleaseResult release(NMvnConfig config, NPath workingDir, Map<NId, String> explicitReleases,
-                                 boolean strict, boolean apply) throws IOException {
+                                 boolean strict, boolean apply)  {
         ScanResult scanResult = scan(config, workingDir);
         Map<NId, PomArtifact> artifacts = scanResult.getArtifacts();
 
@@ -256,11 +256,11 @@ public class VersionService {
         return new ReleaseResult(changes, targetVersions, unmanagedSnapshots);
     }
 
-    private List<PomChange> applyModifications(Map<NId, PomArtifact> artifacts, Map<NId, String> targetVersions) throws IOException {
+    private List<PomChange> applyModifications(Map<NId, PomArtifact> artifacts, Map<NId, String> targetVersions)  {
         return applyModifications(artifacts, targetVersions, BumpPolicy.CascadePolicy.CASCADE_REFERENCES_ONLY);
     }
 
-    private List<PomChange> applyModifications(Map<NId, PomArtifact> artifacts, Map<NId, String> targetVersions, BumpPolicy.CascadePolicy cascadePolicy) throws IOException {
+    private List<PomChange> applyModifications(Map<NId, PomArtifact> artifacts, Map<NId, String> targetVersions, BumpPolicy.CascadePolicy cascadePolicy)  {
         // Map file paths to in-memory modified text content
         Map<NPath, String> contentByPath = new LinkedHashMap<>();
         for (PomArtifact a : artifacts.values()) {
@@ -352,7 +352,7 @@ public class VersionService {
         return changes;
     }
 
-    private void applyChangesToDisk(List<PomChange> changes) throws IOException {
+    private void applyChangesToDisk(List<PomChange> changes)  {
         for (PomChange c : changes) {
             if (c.hasChanges()) {
                 c.getPomFile().writeString(c.getNewContent());
