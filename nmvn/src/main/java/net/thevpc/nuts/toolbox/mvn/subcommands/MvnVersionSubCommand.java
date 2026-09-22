@@ -41,7 +41,6 @@ public class MvnVersionSubCommand {
         boolean failOnWarning = false;
         BumpPolicy.CascadePolicy cascadePolicy = null;
         BumpPolicy.IncrementType increment = null;
-        boolean force = false;
         List<String> roots = new ArrayList<>();
         List<String> excludes = new ArrayList<>();
         List<BumpInstruction> cliInstructions = new ArrayList<>();
@@ -119,7 +118,7 @@ public class MvnVersionSubCommand {
                 case "scan":
                     return doScan(config, workingDir);
                 case "bump":
-                    return doBump(config, workingDir, oo.cliInstructions, oo.increment, oo.cascadePolicy, oo.force, effectiveApply);
+                    return doBump(config, workingDir, oo.cliInstructions, oo.increment, oo.cascadePolicy, NSession.of().isForce(), effectiveApply);
                 case "update":
                     return doUpdate(config, workingDir, oo.explicitUpdates, oo.cascadePolicy, effectiveApply);
                 case "release":
@@ -147,7 +146,6 @@ public class MvnVersionSubCommand {
                 .when("--patch").asFlag(a -> oo.increment = BumpPolicy.IncrementType.PATCH)
                 .when("--minor").asFlag(a -> oo.increment = BumpPolicy.IncrementType.MINOR)
                 .when("--major").asFlag(a -> oo.increment = BumpPolicy.IncrementType.MAJOR)
-                .when("-f", "--force").asFlag(a -> oo.force = a.booleanValue())
                 .when("-c", "--cascade", "--cascade-policy").asEntry(a -> oo.cascadePolicy = BumpPolicy.CascadePolicy.parse(a.stringValue()))
                 .when("--cascade-versions").asFlag(a -> {
                     if (a.booleanValue()) {
@@ -181,7 +179,6 @@ public class MvnVersionSubCommand {
                 .when("--patch").asFlag(a -> oo.increment = BumpPolicy.IncrementType.PATCH)
                 .when("--minor").asFlag(a -> oo.increment = BumpPolicy.IncrementType.MINOR)
                 .when("--major").asFlag(a -> oo.increment = BumpPolicy.IncrementType.MAJOR)
-                .when("-f", "--force").asFlag(a -> oo.force = a.booleanValue())
                 .when("-c", "--cascade", "--cascade-policy").asEntry(a -> oo.cascadePolicy = BumpPolicy.CascadePolicy.parse(a.stringValue()))
                 .when("--cascade-versions").asFlag(a -> {
                     if (a.booleanValue()) {
@@ -247,7 +244,6 @@ public class MvnVersionSubCommand {
                 .when("--patch").asFlag(a -> oo.increment = BumpPolicy.IncrementType.PATCH)
                 .when("--minor").asFlag(a -> oo.increment = BumpPolicy.IncrementType.MINOR)
                 .when("--major").asFlag(a -> oo.increment = BumpPolicy.IncrementType.MAJOR)
-                .when("-f", "--force").asFlag(a -> oo.force = a.booleanValue())
                 .when("-c", "--cascade", "--cascade-policy").asEntry(a -> oo.cascadePolicy = BumpPolicy.CascadePolicy.parse(a.stringValue()))
                 .when("--cascade-versions").asFlag(a -> {
                     if (a.booleanValue()) {
@@ -405,7 +401,6 @@ public class MvnVersionSubCommand {
                 .when("--patch").asFlag(a -> oo.increment = BumpPolicy.IncrementType.PATCH)
                 .when("--minor").asFlag(a -> oo.increment = BumpPolicy.IncrementType.MINOR)
                 .when("--major").asFlag(a -> oo.increment = BumpPolicy.IncrementType.MAJOR)
-                .when("-f", "--force").asFlag(a -> oo.force = a.booleanValue())
                 .when("-c", "--cascade", "--cascade-policy").asEntry(a -> oo.cascadePolicy = BumpPolicy.CascadePolicy.parse(a.stringValue()))
                 .when("--cascade-versions").asFlag(a -> {
                     if (a.booleanValue()) {
@@ -439,7 +434,6 @@ public class MvnVersionSubCommand {
                 .when("--patch").asFlag(a -> oo.increment = BumpPolicy.IncrementType.PATCH)
                 .when("--minor").asFlag(a -> oo.increment = BumpPolicy.IncrementType.MINOR)
                 .when("--major").asFlag(a -> oo.increment = BumpPolicy.IncrementType.MAJOR)
-                .when("-f", "--force").asFlag(a -> oo.force = a.booleanValue())
                 .when("-c", "--cascade", "--cascade-policy").asEntry(a -> oo.cascadePolicy = BumpPolicy.CascadePolicy.parse(a.stringValue()))
                 .when("--cascade-versions").asFlag(a -> {
                     if (a.booleanValue()) {

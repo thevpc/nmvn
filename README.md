@@ -176,7 +176,7 @@ nmvn version check --json
 
 Use `bump` to **increment** versions using SemVer arithmetic (`--patch`, `--minor`, `--major`). `nmvn` automatically calculates the next version for you.
 
-- **Idempotent by default**: If an artifact is already a `-SNAPSHOT` (e.g. `1.2.1-SNAPSHOT`), `bump --patch` leaves it unchanged unless `--force` (`-f`) is specified.
+- **Idempotent by default**: If an artifact is already a `-SNAPSHOT` (e.g. `1.2.1-SNAPSHOT`), `bump --patch` leaves it unchanged unless `--force` is specified (the standard nuts session option, long form only).
 - **Release Immutability**: If a consuming module in the workspace is a release (not a snapshot) and its POM is modified because its dependency was bumped, it is **automatically bumped to `next-SNAPSHOT`**. Consuming modules that are already snapshots remain at their current version.
 
 ```bash

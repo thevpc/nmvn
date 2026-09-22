@@ -5,7 +5,7 @@ manage multi-project maven worksets and versions
 ==nmvn== [**--version** <MVN_VERSION>] [{{args...}}]
 ==nmvn== **workset** [**list**|**path**|**get**|**set**|**add-root**|**remove-root**|**scan**|**edit**] [{{options...}}]
 ==nmvn== **version scan**    [**--workset** <FILE>] [**-j**|**--json**]
-==nmvn== **version bump**    [**--workset** <FILE>] [**--dry**] [**--patch**|**--minor**|**--major**] [**-f**|**--force**] [**--cascade**=<versions|references|none>] [**-a** <GA[#VER]>]...
+==nmvn== **version bump**    [**--workset** <FILE>] [**--dry**] [**--patch**|**--minor**|**--major**] [**--force**] [**--cascade**=<versions|references|none>] [**-a** <GA[#VER]>]...
 ==nmvn== **version update**  [**--workset** <FILE>] [**--dry**] [**--cascade**=<versions|references|none>] [**-a** <GA#VER>]...
 ==nmvn== **version release** [**--workset** <FILE>] [**--dry**] [**--strict**] [**-a** <GA#VER>]...
 ==nmvn== **version check**   [**--workset** <FILE>] [**--fail-on-warning**] [**-j**|**--json**]
@@ -18,8 +18,8 @@ manage multi-project maven worksets and versions
     ```sh --patch | --minor | --major```
         increment target artifact(s) or all workspace artifacts by patch, minor, or major.
 
-    ```sh -f | --force```
-        in bump mode, force advancing an artifact that is already in snapshot mode.
+    ```sh --force```
+        in bump mode, force advancing an artifact that is already in snapshot mode. This is the standard nuts session option (long form only; `-f` is `--fetch`), handled by the nuts session like `--dry`.
 
     ```sh -c=<mode> | --cascade=<mode>```
         control downstream cascading behavior (`versions`, `references`, or `none`).
