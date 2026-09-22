@@ -14,6 +14,7 @@ import net.thevpc.nmvn.lib.service.ScanResult;
 import net.thevpc.nmvn.lib.service.VersionService;
 import net.thevpc.nuts.artifact.NId;
 import net.thevpc.nuts.cmdline.NCmdLine;
+import net.thevpc.nuts.concurrent.NCallable;
 import net.thevpc.nuts.core.NSession;
 import net.thevpc.nuts.elem.NArrayElementBuilder;
 import net.thevpc.nuts.elem.NElement;
@@ -23,7 +24,6 @@ import net.thevpc.nuts.io.NOut;
 import net.thevpc.nuts.io.NPath;
 import net.thevpc.nuts.text.NMsg;
 import net.thevpc.nuts.text.NTextStyle;
-import net.thevpc.nuts.util.NRef;
 
 import java.util.*;
 
@@ -35,13 +35,13 @@ public class MvnVersionSubCommand {
     }
 
     private static class SharedOptions {
-        NRef<String> subCommand = NRef.ofNull();
-        NRef<String> configPath = NRef.ofNull();
-        NRef<Boolean> strict = NRef.of(false);
-        NRef<Boolean> failOnWarning = NRef.of(false);
-        NRef<BumpPolicy.CascadePolicy> cascadePolicy = NRef.ofNull();
-        NRef<BumpPolicy.IncrementType> increment = NRef.ofNull();
-        NRef<Boolean> force = NRef.of(false);
+        String subCommand = null;
+        String configPath = null;
+        boolean strict = false;
+        boolean failOnWarning = false;
+        BumpPolicy.CascadePolicy cascadePolicy = null;
+        BumpPolicy.IncrementType increment = null;
+        boolean force = false;
         List<String> roots = new ArrayList<>();
         List<String> excludes = new ArrayList<>();
         List<BumpInstruction> cliInstructions = new ArrayList<>();
@@ -51,11 +51,16 @@ public class MvnVersionSubCommand {
     }
 
     public int run(String[] args) {
+        NSession scoped = NSession.of().copy();
+        return scoped.callWith(NCallable.of(() -> run0(args)));
+    }
+
+    private int run0(String[] args) {
         SharedOptions oo = new SharedOptions();
         NCmdLine cmd = NCmdLine.of(args);
         boolean commandConsumed = false;
         while (cmd.hasNext() && !commandConsumed) {
-            if (oo.subCommand.isNull()) {
+            if (oo.subCommand == null) {
                 if (!cmd.matcher()
                         .when("scan").asRaw(c -> {
                             c.next();
@@ -90,24 +95,13 @@ public class MvnVersionSubCommand {
                 }
             }
         }
-        if (oo.subCommand.isNull()) {
+        if (oo.subCommand == null) {
             NOut.println(NMsg.ofP("Usage: nmvn version <scan|bump|update|release|check> [options]"));
             return 1;
         }
 
-        // Extract canonical values from NRefs after parsing is complete
-        String configPathVal = oo.configPath.get();
-        Boolean strictVal = oo.strict.get();
-        Boolean failOnWarningVal = oo.failOnWarning.get();
-        BumpPolicy.CascadePolicy cascadePolicyVal = oo.cascadePolicy.get();
-        BumpPolicy.IncrementType incrementVal = oo.increment.get();
-        Boolean forceVal = oo.force.get();
-        List<BumpInstruction> cliInstructionsVal = oo.cliInstructions; // Already a List, not an NRef
-        Map<NId, String> explicitUpdatesVal = oo.explicitUpdates; // Already a Map, not an NRef
-        Map<NId, String> explicitReleasesVal = oo.explicitReleases; // Already a Map, not an NRef
-
         NPath workingDir = NPath.ofUserDirectory();
-        NPath cfgFile = NMvnConfigLoader.resolveConfigFile(configPathVal, workingDir);
+        NPath cfgFile = NMvnConfigLoader.resolveConfigFile(oo.configPath, workingDir);
         NMvnConfig config = NMvnConfigLoader.load(cfgFile);
 
         // Apply CLI overrides
@@ -121,21 +115,21 @@ public class MvnVersionSubCommand {
         boolean effectiveApply = !NSession.of().isDry();
 
         try {
-            switch (oo.subCommand.get()) {
+            switch (oo.subCommand) {
                 case "scan":
                     return doScan(config, workingDir);
                 case "bump":
-                    return doBump(config, workingDir, cliInstructionsVal, incrementVal, cascadePolicyVal, forceVal, effectiveApply);
+                    return doBump(config, workingDir, oo.cliInstructions, oo.increment, oo.cascadePolicy, oo.force, effectiveApply);
                 case "update":
-                    return doUpdate(config, workingDir, explicitUpdatesVal, cascadePolicyVal, effectiveApply);
+                    return doUpdate(config, workingDir, oo.explicitUpdates, oo.cascadePolicy, effectiveApply);
                 case "release":
-                    return doRelease(config, workingDir, explicitReleasesVal, strictVal, effectiveApply);
+                    return doRelease(config, workingDir, oo.explicitReleases, oo.strict, effectiveApply);
                 case "check":
-                    return doCheck(config, workingDir, failOnWarningVal);
+                    return doCheck(config, workingDir, oo.failOnWarning);
                 case "compare":
                     return doCompare(config, workingDir);
                 default:
-                    NOut.println(NMsg.ofC("Unknown sub-command: %s", oo.subCommand.get()));
+                    NOut.println(NMsg.ofC("Unknown sub-command: %s", oo.subCommand));
                     return 1;
             }
         } catch (Exception e) {
@@ -145,69 +139,69 @@ public class MvnVersionSubCommand {
     }
 
     private void matchScanOptions(NCmdLine cmd, SharedOptions oo) {
-        oo.subCommand.set("scan");
+        oo.subCommand = "scan";
         cmd.matcher()
-                .when("--workset").asEntry(a -> oo.configPath.set(a.stringValue()))
-                .when("--strict").asFlag(a -> oo.strict.set(a.booleanValue()))
-                .when("--fail-on-warning").asFlag(a -> oo.failOnWarning.set(a.booleanValue()))
-                .when("--patch").asFlag(a -> oo.increment.set(BumpPolicy.IncrementType.PATCH))
-                .when("--minor").asFlag(a -> oo.increment.set(BumpPolicy.IncrementType.MINOR))
-                .when("--major").asFlag(a -> oo.increment.set(BumpPolicy.IncrementType.MAJOR))
-                .when("-f", "--force").asFlag(a -> oo.force.set(a.booleanValue()))
-                .when("-c", "--cascade", "--cascade-policy").asEntry(a -> oo.cascadePolicy.set(BumpPolicy.CascadePolicy.parse(a.stringValue())))
+                .when("--workset").asEntry(a -> oo.configPath = a.stringValue())
+                .when("--strict").asFlag(a -> oo.strict = a.booleanValue())
+                .when("--fail-on-warning").asFlag(a -> oo.failOnWarning = a.booleanValue())
+                .when("--patch").asFlag(a -> oo.increment = BumpPolicy.IncrementType.PATCH)
+                .when("--minor").asFlag(a -> oo.increment = BumpPolicy.IncrementType.MINOR)
+                .when("--major").asFlag(a -> oo.increment = BumpPolicy.IncrementType.MAJOR)
+                .when("-f", "--force").asFlag(a -> oo.force = a.booleanValue())
+                .when("-c", "--cascade", "--cascade-policy").asEntry(a -> oo.cascadePolicy = BumpPolicy.CascadePolicy.parse(a.stringValue()))
                 .when("--cascade-versions").asFlag(a -> {
                     if (a.booleanValue()) {
-                        oo.cascadePolicy.set(BumpPolicy.CascadePolicy.CASCADE_VERSIONS);
+                        oo.cascadePolicy = BumpPolicy.CascadePolicy.CASCADE_VERSIONS;
                     }
                 })
                 .when("--cascade-references-only", "--no-cascade-versions").asFlag(a -> {
                     if (a.booleanValue()) {
-                        oo.cascadePolicy.set(BumpPolicy.CascadePolicy.CASCADE_REFERENCES_ONLY);
+                        oo.cascadePolicy = BumpPolicy.CascadePolicy.CASCADE_REFERENCES_ONLY;
                     }
                 })
                 .when("--no-cascade").asFlag(a -> {
                     if (a.booleanValue()) {
-                        oo.cascadePolicy.set(BumpPolicy.CascadePolicy.NONE);
+                        oo.cascadePolicy = BumpPolicy.CascadePolicy.NONE;
                     }
                 })
                 .when("--root").asEntry(a -> oo.roots.add(a.stringValue()))
                 .when("--exclude").asEntry(a -> oo.excludes.add(a.stringValue()))
-                .when("-a", "--artifact").asEntry(a -> handleArtifactArg(oo.subCommand.get(), a.stringValue(), oo.cliInstructions, oo.explicitUpdates, oo.explicitReleases))
-                .whenNonOption().asArg(a -> handleArtifactArg(oo.subCommand.get(), a.asString().get(), oo.cliInstructions, oo.explicitUpdates, oo.explicitReleases))
+                .when("-a", "--artifact").asEntry(a -> handleArtifactArg(oo.subCommand, a.stringValue(), oo.cliInstructions, oo.explicitUpdates, oo.explicitReleases))
+                .whenNonOption().asArg(a -> handleArtifactArg(oo.subCommand, a.asString().get(), oo.cliInstructions, oo.explicitUpdates, oo.explicitReleases))
                 .withDefaults()
                 .requireAll();
     }
 
     private void matchBumpOptions(NCmdLine cmd, SharedOptions oo) {
-        oo.subCommand.set("bump");
+        oo.subCommand = "bump";
         cmd.matcher()
-                .when("--workset").asEntry(a -> oo.configPath.set(a.stringValue()))
-                .when("--strict").asFlag(a -> oo.strict.set(a.booleanValue()))
-                .when("--fail-on-warning").asFlag(a -> oo.failOnWarning.set(a.booleanValue()))
-                .when("--patch").asFlag(a -> oo.increment.set(BumpPolicy.IncrementType.PATCH))
-                .when("--minor").asFlag(a -> oo.increment.set(BumpPolicy.IncrementType.MINOR))
-                .when("--major").asFlag(a -> oo.increment.set(BumpPolicy.IncrementType.MAJOR))
-                .when("-f", "--force").asFlag(a -> oo.force.set(a.booleanValue()))
-                .when("-c", "--cascade", "--cascade-policy").asEntry(a -> oo.cascadePolicy.set(BumpPolicy.CascadePolicy.parse(a.stringValue())))
+                .when("--workset").asEntry(a -> oo.configPath = a.stringValue())
+                .when("--strict").asFlag(a -> oo.strict = a.booleanValue())
+                .when("--fail-on-warning").asFlag(a -> oo.failOnWarning = a.booleanValue())
+                .when("--patch").asFlag(a -> oo.increment = BumpPolicy.IncrementType.PATCH)
+                .when("--minor").asFlag(a -> oo.increment = BumpPolicy.IncrementType.MINOR)
+                .when("--major").asFlag(a -> oo.increment = BumpPolicy.IncrementType.MAJOR)
+                .when("-f", "--force").asFlag(a -> oo.force = a.booleanValue())
+                .when("-c", "--cascade", "--cascade-policy").asEntry(a -> oo.cascadePolicy = BumpPolicy.CascadePolicy.parse(a.stringValue()))
                 .when("--cascade-versions").asFlag(a -> {
                     if (a.booleanValue()) {
-                        oo.cascadePolicy.set(BumpPolicy.CascadePolicy.CASCADE_VERSIONS);
+                        oo.cascadePolicy = BumpPolicy.CascadePolicy.CASCADE_VERSIONS;
                     }
                 })
                 .when("--cascade-references-only", "--no-cascade-versions").asFlag(a -> {
                     if (a.booleanValue()) {
-                        oo.cascadePolicy.set(BumpPolicy.CascadePolicy.CASCADE_REFERENCES_ONLY);
+                        oo.cascadePolicy = BumpPolicy.CascadePolicy.CASCADE_REFERENCES_ONLY;
                     }
                 })
                 .when("--no-cascade").asFlag(a -> {
                     if (a.booleanValue()) {
-                        oo.cascadePolicy.set(BumpPolicy.CascadePolicy.NONE);
+                        oo.cascadePolicy = BumpPolicy.CascadePolicy.NONE;
                     }
                 })
                 .when("--root").asEntry(a -> oo.roots.add(a.stringValue()))
                 .when("--exclude").asEntry(a -> oo.excludes.add(a.stringValue()))
-                .when("-a", "--artifact").asEntry(a -> handleArtifactArg(oo.subCommand.get(), a.stringValue(), oo.cliInstructions, oo.explicitUpdates, oo.explicitReleases))
-                .whenNonOption().asArg(a -> handleArtifactArg(oo.subCommand.get(), a.asString().get(), oo.cliInstructions, oo.explicitUpdates, oo.explicitReleases))
+                .when("-a", "--artifact").asEntry(a -> handleArtifactArg(oo.subCommand, a.stringValue(), oo.cliInstructions, oo.explicitUpdates, oo.explicitReleases))
+                .whenNonOption().asArg(a -> handleArtifactArg(oo.subCommand, a.asString().get(), oo.cliInstructions, oo.explicitUpdates, oo.explicitReleases))
                 .withDefaults()
                 .requireAll();
     }
@@ -245,35 +239,35 @@ public class MvnVersionSubCommand {
     }
 
     private void matchUpdateOptions(NCmdLine cmd, SharedOptions oo) {
-        oo.subCommand.set("update");
+        oo.subCommand = "update";
         cmd.matcher()
-                .when("--workset").asEntry(a -> oo.configPath.set(a.stringValue()))
-                .when("--strict").asFlag(a -> oo.strict.set(a.booleanValue()))
-                .when("--fail-on-warning").asFlag(a -> oo.failOnWarning.set(a.booleanValue()))
-                .when("--patch").asFlag(a -> oo.increment.set(BumpPolicy.IncrementType.PATCH))
-                .when("--minor").asFlag(a -> oo.increment.set(BumpPolicy.IncrementType.MINOR))
-                .when("--major").asFlag(a -> oo.increment.set(BumpPolicy.IncrementType.MAJOR))
-                .when("-f", "--force").asFlag(a -> oo.force.set(a.booleanValue()))
-                .when("-c", "--cascade", "--cascade-policy").asEntry(a -> oo.cascadePolicy.set(BumpPolicy.CascadePolicy.parse(a.stringValue())))
+                .when("--workset").asEntry(a -> oo.configPath = a.stringValue())
+                .when("--strict").asFlag(a -> oo.strict = a.booleanValue())
+                .when("--fail-on-warning").asFlag(a -> oo.failOnWarning = a.booleanValue())
+                .when("--patch").asFlag(a -> oo.increment = BumpPolicy.IncrementType.PATCH)
+                .when("--minor").asFlag(a -> oo.increment = BumpPolicy.IncrementType.MINOR)
+                .when("--major").asFlag(a -> oo.increment = BumpPolicy.IncrementType.MAJOR)
+                .when("-f", "--force").asFlag(a -> oo.force = a.booleanValue())
+                .when("-c", "--cascade", "--cascade-policy").asEntry(a -> oo.cascadePolicy = BumpPolicy.CascadePolicy.parse(a.stringValue()))
                 .when("--cascade-versions").asFlag(a -> {
                     if (a.booleanValue()) {
-                        oo.cascadePolicy.set(BumpPolicy.CascadePolicy.CASCADE_VERSIONS);
+                        oo.cascadePolicy = BumpPolicy.CascadePolicy.CASCADE_VERSIONS;
                     }
                 })
                 .when("--cascade-references-only", "--no-cascade-versions").asFlag(a -> {
                     if (a.booleanValue()) {
-                        oo.cascadePolicy.set(BumpPolicy.CascadePolicy.CASCADE_REFERENCES_ONLY);
+                        oo.cascadePolicy = BumpPolicy.CascadePolicy.CASCADE_REFERENCES_ONLY;
                     }
                 })
                 .when("--no-cascade").asFlag(a -> {
                     if (a.booleanValue()) {
-                        oo.cascadePolicy.set(BumpPolicy.CascadePolicy.NONE);
+                        oo.cascadePolicy = BumpPolicy.CascadePolicy.NONE;
                     }
                 })
                 .when("--root").asEntry(a -> oo.roots.add(a.stringValue()))
                 .when("--exclude").asEntry(a -> oo.excludes.add(a.stringValue()))
-                .when("-a", "--artifact").asEntry(a -> handleArtifactArg(oo.subCommand.get(), a.stringValue(), oo.cliInstructions, oo.explicitUpdates, oo.explicitReleases))
-                .whenNonOption().asArg(a -> handleArtifactArg(oo.subCommand.get(), a.asString().get(), oo.cliInstructions, oo.explicitUpdates, oo.explicitReleases))
+                .when("-a", "--artifact").asEntry(a -> handleArtifactArg(oo.subCommand, a.stringValue(), oo.cliInstructions, oo.explicitUpdates, oo.explicitReleases))
+                .whenNonOption().asArg(a -> handleArtifactArg(oo.subCommand, a.asString().get(), oo.cliInstructions, oo.explicitUpdates, oo.explicitReleases))
                 .withDefaults()
                 .requireAll();
     }
@@ -403,75 +397,75 @@ public class MvnVersionSubCommand {
     }
 
     private void matchReleaseOptions(NCmdLine cmd, SharedOptions oo) {
-        oo.subCommand.set("release");
+        oo.subCommand = "release";
         cmd.matcher()
-                .when("--workset").asEntry(a -> oo.configPath.set(a.stringValue()))
-                .when("--strict").asFlag(a -> oo.strict.set(a.booleanValue()))
-                .when("--fail-on-warning").asFlag(a -> oo.failOnWarning.set(a.booleanValue()))
-                .when("--patch").asFlag(a -> oo.increment.set(BumpPolicy.IncrementType.PATCH))
-                .when("--minor").asFlag(a -> oo.increment.set(BumpPolicy.IncrementType.MINOR))
-                .when("--major").asFlag(a -> oo.increment.set(BumpPolicy.IncrementType.MAJOR))
-                .when("-f", "--force").asFlag(a -> oo.force.set(a.booleanValue()))
-                .when("-c", "--cascade", "--cascade-policy").asEntry(a -> oo.cascadePolicy.set(BumpPolicy.CascadePolicy.parse(a.stringValue())))
+                .when("--workset").asEntry(a -> oo.configPath = a.stringValue())
+                .when("--strict").asFlag(a -> oo.strict = a.booleanValue())
+                .when("--fail-on-warning").asFlag(a -> oo.failOnWarning = a.booleanValue())
+                .when("--patch").asFlag(a -> oo.increment = BumpPolicy.IncrementType.PATCH)
+                .when("--minor").asFlag(a -> oo.increment = BumpPolicy.IncrementType.MINOR)
+                .when("--major").asFlag(a -> oo.increment = BumpPolicy.IncrementType.MAJOR)
+                .when("-f", "--force").asFlag(a -> oo.force = a.booleanValue())
+                .when("-c", "--cascade", "--cascade-policy").asEntry(a -> oo.cascadePolicy = BumpPolicy.CascadePolicy.parse(a.stringValue()))
                 .when("--cascade-versions").asFlag(a -> {
                     if (a.booleanValue()) {
-                        oo.cascadePolicy.set(BumpPolicy.CascadePolicy.CASCADE_VERSIONS);
+                        oo.cascadePolicy = BumpPolicy.CascadePolicy.CASCADE_VERSIONS;
                     }
                 })
                 .when("--cascade-references-only", "--no-cascade-versions").asFlag(a -> {
                     if (a.booleanValue()) {
-                        oo.cascadePolicy.set(BumpPolicy.CascadePolicy.CASCADE_REFERENCES_ONLY);
+                        oo.cascadePolicy = BumpPolicy.CascadePolicy.CASCADE_REFERENCES_ONLY;
                     }
                 })
                 .when("--no-cascade").asFlag(a -> {
                     if (a.booleanValue()) {
-                        oo.cascadePolicy.set(BumpPolicy.CascadePolicy.NONE);
+                        oo.cascadePolicy = BumpPolicy.CascadePolicy.NONE;
                     }
                 })
                 .when("--root").asEntry(a -> oo.roots.add(a.stringValue()))
                 .when("--exclude").asEntry(a -> oo.excludes.add(a.stringValue()))
-                .when("-a", "--artifact").asEntry(a -> handleArtifactArg(oo.subCommand.get(), a.stringValue(), oo.cliInstructions, oo.explicitUpdates, oo.explicitReleases))
-                .whenNonOption().asArg(a -> handleArtifactArg(oo.subCommand.get(), a.asString().get(), oo.cliInstructions, oo.explicitUpdates, oo.explicitReleases))
+                .when("-a", "--artifact").asEntry(a -> handleArtifactArg(oo.subCommand, a.stringValue(), oo.cliInstructions, oo.explicitUpdates, oo.explicitReleases))
+                .whenNonOption().asArg(a -> handleArtifactArg(oo.subCommand, a.asString().get(), oo.cliInstructions, oo.explicitUpdates, oo.explicitReleases))
                 .withDefaults()
                 .requireAll();
     }
 
     private void matchCheckOptions(NCmdLine cmd, SharedOptions oo) {
-        oo.subCommand.set("check");
+        oo.subCommand = "check";
         cmd.matcher()
-                .when("--workset").asEntry(a -> oo.configPath.set(a.stringValue()))
-                .when("--strict").asFlag(a -> oo.strict.set(a.booleanValue()))
-                .when("--fail-on-warning").asFlag(a -> oo.failOnWarning.set(a.booleanValue()))
-                .when("--patch").asFlag(a -> oo.increment.set(BumpPolicy.IncrementType.PATCH))
-                .when("--minor").asFlag(a -> oo.increment.set(BumpPolicy.IncrementType.MINOR))
-                .when("--major").asFlag(a -> oo.increment.set(BumpPolicy.IncrementType.MAJOR))
-                .when("-f", "--force").asFlag(a -> oo.force.set(a.booleanValue()))
-                .when("-c", "--cascade", "--cascade-policy").asEntry(a -> oo.cascadePolicy.set(BumpPolicy.CascadePolicy.parse(a.stringValue())))
+                .when("--workset").asEntry(a -> oo.configPath = a.stringValue())
+                .when("--strict").asFlag(a -> oo.strict = a.booleanValue())
+                .when("--fail-on-warning").asFlag(a -> oo.failOnWarning = a.booleanValue())
+                .when("--patch").asFlag(a -> oo.increment = BumpPolicy.IncrementType.PATCH)
+                .when("--minor").asFlag(a -> oo.increment = BumpPolicy.IncrementType.MINOR)
+                .when("--major").asFlag(a -> oo.increment = BumpPolicy.IncrementType.MAJOR)
+                .when("-f", "--force").asFlag(a -> oo.force = a.booleanValue())
+                .when("-c", "--cascade", "--cascade-policy").asEntry(a -> oo.cascadePolicy = BumpPolicy.CascadePolicy.parse(a.stringValue()))
                 .when("--cascade-versions").asFlag(a -> {
                     if (a.booleanValue()) {
-                        oo.cascadePolicy.set(BumpPolicy.CascadePolicy.CASCADE_VERSIONS);
+                        oo.cascadePolicy = BumpPolicy.CascadePolicy.CASCADE_VERSIONS;
                     }
                 })
                 .when("--cascade-references-only", "--no-cascade-versions").asFlag(a -> {
                     if (a.booleanValue()) {
-                        oo.cascadePolicy.set(BumpPolicy.CascadePolicy.CASCADE_REFERENCES_ONLY);
+                        oo.cascadePolicy = BumpPolicy.CascadePolicy.CASCADE_REFERENCES_ONLY;
                     }
                 })
                 .when("--no-cascade").asFlag(a -> {
                     if (a.booleanValue()) {
-                        oo.cascadePolicy.set(BumpPolicy.CascadePolicy.NONE);
+                        oo.cascadePolicy = BumpPolicy.CascadePolicy.NONE;
                     }
                 })
                 .when("--root").asEntry(a -> oo.roots.add(a.stringValue()))
                 .when("--exclude").asEntry(a -> oo.excludes.add(a.stringValue()))
-                .when("-a", "--artifact").asEntry(a -> handleArtifactArg(oo.subCommand.get(), a.stringValue(), oo.cliInstructions, oo.explicitUpdates, oo.explicitReleases))
-                .whenNonOption().asArg(a -> handleArtifactArg(oo.subCommand.get(), a.asString().get(), oo.cliInstructions, oo.explicitUpdates, oo.explicitReleases))
+                .when("-a", "--artifact").asEntry(a -> handleArtifactArg(oo.subCommand, a.stringValue(), oo.cliInstructions, oo.explicitUpdates, oo.explicitReleases))
+                .whenNonOption().asArg(a -> handleArtifactArg(oo.subCommand, a.asString().get(), oo.cliInstructions, oo.explicitUpdates, oo.explicitReleases))
                 .withDefaults()
                 .requireAll();
     }
 
     private void matchCompareOptions(NCmdLine cmd, SharedOptions oo) {
-        oo.subCommand.set("compare");
+        oo.subCommand = "compare";
         cmd.matcher()
                 .withDefaults()
                 .requireAll();
@@ -516,6 +510,12 @@ public class MvnVersionSubCommand {
             }
             rootBuilder.set("issues", issuesArr.build());
             NOut.println(NElementWriter.ofJson().formatPlain(rootBuilder.build()));
+            if (report.hasErrors()) {
+                return 1;
+            }
+            if (failOnWarning && report.hasWarnings()) {
+                return 1;
+            }
             return 0;
         } else {
             if (report.isEmpty()) {
