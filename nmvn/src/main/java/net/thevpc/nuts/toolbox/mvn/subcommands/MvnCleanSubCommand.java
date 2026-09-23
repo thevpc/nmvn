@@ -1,7 +1,16 @@
 package net.thevpc.nuts.toolbox.mvn.subcommands;
 
+import net.thevpc.nmvn.lib.config.NMvnConfig;
+import net.thevpc.nmvn.lib.config.NMvnConfigLoader;
+import net.thevpc.nmvn.lib.model.PomArtifact;
+import net.thevpc.nmvn.lib.service.ScanResult;
+import net.thevpc.nmvn.lib.service.VersionService;
+import net.thevpc.nuts.artifact.NId;
 import net.thevpc.nuts.cmdline.NCmdLine;
 import net.thevpc.nuts.core.NSession;
+import net.thevpc.nuts.elem.NArrayElementBuilder;
+import net.thevpc.nuts.elem.NElement;
+import net.thevpc.nuts.elem.NObjectElementBuilder;
 import net.thevpc.nuts.io.NOut;
 import net.thevpc.nuts.io.NPath;
 import net.thevpc.nuts.text.NMsg;
@@ -9,16 +18,20 @@ import net.thevpc.nuts.text.NTextStyle;
 import net.thevpc.nuts.toolbox.mvn.util.MavenCliWrapper;
 import net.thevpc.nuts.util.NRef;
 
-import java.nio.file.Files;
-import java.nio.file.LinkOption;
-import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 
 /**
- * CLI command to clean target directories of Maven projects under given roots.
+ * CLI command to clean scanned Maven projects.
+ * Uses the workset scanner (same as {@code version scan}) so it respects
+ * {@code workset.tson}/{@code nmvn.tson} roots and excludes, and skips
+ * {@code target/} copies of poms.
  */
 public class MvnCleanSubCommand {
+
+    private final VersionService versionService = new VersionService();
 
     public MvnCleanSubCommand() {
 
@@ -27,69 +40,90 @@ public class MvnCleanSubCommand {
     public int run(String[] args) {
         NCmdLine cmd = NCmdLine.of(args);
         NRef<Boolean> simpleRef = NRef.of(false);
-        List<NPath> roots = new ArrayList<>();
+        NRef<String> worksetRef = NRef.ofNull();
+        List<String> roots = new ArrayList<>();
+        List<String> excludes = new ArrayList<>();
 
         while (cmd.hasNext()) {
             if (NSession.of().configureFirst(cmd)) {
                 // handled by nuts
             } else if (!cmd.matcher()
                     .when("-s", "--simple").asFlag(a -> simpleRef.set(a.booleanValue()))
-                    .when("-r", "--root").asEntry(a -> roots.add(NPath.of(a.stringValue())))
+                    .when("--workset").asEntry(a -> worksetRef.set(a.stringValue()))
+                    .when("--root").asEntry(a -> roots.add(a.stringValue()))
+                    .when("-r").asEntry(a -> roots.add(a.stringValue()))
+                    .when("--exclude").asEntry(a -> excludes.add(a.stringValue()))
+                    .whenNonOption().asArg(a -> roots.add(a.asString().get()))
+                    .withDefaults()
                     .anyMatch()) {
-                // treat as root argument
-                roots.add(NPath.of(cmd.next().get().image()));
+                cmd.throwUnexpectedArgument();
             }
         }
 
-        // If no roots specified via --root or arguments, use current directory
-        if (roots.isEmpty()) {
-            roots.add(NPath.of("."));
+        NPath workingDir = NPath.ofUserDirectory();
+        NPath cfgFile = NMvnConfigLoader.resolveConfigFile(worksetRef.get(), workingDir);
+        NMvnConfig config = NMvnConfigLoader.load(cfgFile);
+
+        // CLI overrides (same semantics as `version scan`)
+        if (!roots.isEmpty()) {
+            for (String r : roots) {
+                NPath p = workingDir.resolve(r);
+                if (!p.exists()) {
+                    NOut.println(NMsg.ofC("Root does not exist: %s", r));
+                    return 1;
+                }
+                if (!p.isDirectory()) {
+                    NOut.println(NMsg.ofC("Root is not a directory: %s", r));
+                    return 1;
+                }
+            }
+            config.setRoots(roots);
+        }
+        if (!excludes.isEmpty()) {
+            config.getExcludes().addAll(excludes);
         }
 
-        // Collect all pom.xml files under the roots
-        List<NPath> pomFiles = new ArrayList<>();
-        for (NPath root : roots) {
-            if (!root.exists()) {
-                NOut.println(NMsg.ofC("Root does not exist: %s", root));
-                return 1;
-            }
-            if (!root.isDirectory()) {
-                NOut.println(NMsg.ofC("Root is not a directory: %s", root));
-                return 1;
-            }
-            try {
-                findPomFiles(root, pomFiles);
-            } catch (Exception e) {
-                NOut.println(NMsg.ofC("Cannot scan root %s: %s", root, e.getMessage()));
-            }
+        ScanResult scan;
+        try {
+            scan = versionService.scan(config, workingDir, false);
+        } catch (Exception e) {
+            NOut.println(NMsg.ofStyled("Scan failed: " + e.getMessage(), NTextStyle.danger()));
+            return 1;
         }
 
-        if (pomFiles.isEmpty()) {
-            NOut.println(NMsg.ofStyled("No pom.xml files found under the specified roots.", NTextStyle.info()));
+        Map<NId, PomArtifact> artifacts = scan.getArtifacts();
+        if (artifacts.isEmpty()) {
+            NOut.println(NMsg.ofStyled("No Maven projects found in workset.", NTextStyle.info()));
             return 0;
         }
 
-        NOut.println(NMsg.ofStyled(String.format("Found %d pom.xml file(s).", pomFiles.size()), NTextStyle.primary4()));
+        List<PomArtifact> ordered = new ArrayList<>(artifacts.values());
+        ordered.sort(Comparator.comparing(a -> a.getPath().toString()));
+
+        NOut.println(NMsg.ofStyled(String.format("Found %d Maven project(s).", ordered.size()), NTextStyle.primary4()));
 
         int successCount = 0;
-        for (NPath pomFile : pomFiles) {
-            // Get parent directory of pom.xml
-            Path parentPath = pomFile.toPath().get().getParent();
-            NPath pomDir = NPath.of(parentPath);
+        List<String> failed = new ArrayList<>();
+        for (PomArtifact artifact : ordered) {
+            NPath pomFile = artifact.getPath();
+            NPath pomDir = pomFile.parent();
             NOut.println(NMsg.ofC("Processing: %s", pomDir));
 
             NPath targetDir = pomDir.resolve("target");
             if (simpleRef.get()) {
-                // Simple mode: delete target directory directly
-                if (targetDir.exists()) {
-                    targetDir.delete(true);
-                    NOut.println(NMsg.ofStyled("  Deleted target directory", NTextStyle.success()));
-                } else {
-                    NOut.println(NMsg.ofStyled("  No target directory found", NTextStyle.info()));
+                try {
+                    if (targetDir.exists()) {
+                        targetDir.delete(true);
+                        NOut.println(NMsg.ofStyled("  Deleted target directory", NTextStyle.success()));
+                    } else {
+                        NOut.println(NMsg.ofStyled("  No target directory found", NTextStyle.info()));
+                    }
+                    successCount++;
+                } catch (Exception e) {
+                    failed.add(pomDir.toString());
+                    NOut.println(NMsg.ofStyled("  Delete failed: " + e.getMessage(), NTextStyle.danger()));
                 }
-                successCount++;
             } else {
-                // Run mvn clean in the pom directory
                 MavenCliWrapper cli = new MavenCliWrapper();
                 cli.setWorkingDirectory(pomDir.toString());
                 int r = cli.doMain(new String[]{"clean"});
@@ -97,34 +131,27 @@ public class MvnCleanSubCommand {
                     NOut.println(NMsg.ofStyled("  mvn clean succeeded", NTextStyle.success()));
                     successCount++;
                 } else {
+                    failed.add(pomDir.toString());
                     NOut.println(NMsg.ofStyled(String.format("  mvn clean failed with code %d", r), NTextStyle.danger()));
                 }
             }
         }
 
-        NOut.println(NMsg.ofStyled(String.format("Completed: %d/%d succeeded", successCount, pomFiles.size()),
-                successCount == pomFiles.size() ? NTextStyle.success() : NTextStyle.warn()));
-        return successCount == pomFiles.size() ? 0 : 1;
-    }
-
-    /**
-     * Recursively finds pom.xml files under the given directory.
-     */
-    private void findPomFiles(NPath dir, List<NPath> result)  {
-        for (NPath entry : dir.list()) {
-            Path entryPath = entry.toPath().get();
-            if (Files.isDirectory(entryPath, LinkOption.NOFOLLOW_LINKS)) {
-                // Skip hidden directories
-                String dirName = entryPath.getFileName().toString();
-                if (!dirName.startsWith(".")) {
-                    findPomFiles(entry, result);
-                }
-            } else {
-                String fileName = entryPath.getFileName().toString();
-                if ("pom.xml".equals(fileName)) {
-                    result.add(entry);
-                }
+        if (!NOut.isPlain()) {
+            NObjectElementBuilder obj = NElement.ofObjectBuilder();
+            obj.set("status", NElement.ofString(failed.isEmpty() ? "success" : "error"));
+            obj.set("total", ordered.size());
+            obj.set("succeeded", successCount);
+            NArrayElementBuilder failedArr = NElement.ofArrayBuilder();
+            for (String f : failed) {
+                failedArr.add(NElement.ofString(f));
             }
+            obj.set("failed", failedArr.build());
+            NOut.println(obj.build());
+        } else {
+            NOut.println(NMsg.ofStyled(String.format("Completed: %d/%d succeeded", successCount, ordered.size()),
+                    successCount == ordered.size() ? NTextStyle.success() : NTextStyle.warn()));
         }
+        return failed.isEmpty() ? 0 : 1;
     }
 }

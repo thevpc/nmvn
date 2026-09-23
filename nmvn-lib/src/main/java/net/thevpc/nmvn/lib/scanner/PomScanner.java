@@ -44,9 +44,11 @@ public class PomScanner {
             List<PathMatcher> matchers = new ArrayList<>();
             FileSystem fs = rootPath.getFileSystem();
             for (String exc : combinedExcludes) {
-                try {
-                    matchers.add(fs.getPathMatcher("glob:" + exc));
-                } catch (Exception ignored) {
+                for (String variant : expandGlobVariants(exc)) {
+                    try {
+                        matchers.add(fs.getPathMatcher("glob:" + variant));
+                    } catch (Exception ignored) {
+                    }
                 }
             }
 
@@ -133,6 +135,29 @@ public class PomScanner {
             curr = curr.getParent();
         }
         return false;
+    }
+
+    /**
+     * Expands a glob so double-star-slash patterns also match at path boundaries.
+     * Java globs require a real directory for a leading or trailing double star,
+     * so a pattern like star-star-skipme-star-star never matches
+     * skipme/pom.xml nor skipme itself. Generate the boundary variants as well.
+     */
+    static List<String> expandGlobVariants(String pattern) {
+        List<String> variants = new ArrayList<>();
+        variants.add(pattern);
+        boolean leading = pattern.startsWith("**/");
+        boolean trailing = pattern.endsWith("/**");
+        if (leading) {
+            variants.add(pattern.substring(3));
+        }
+        if (trailing) {
+            variants.add(pattern.substring(0, pattern.length() - 3));
+        }
+        if (leading && trailing && pattern.length() > 5) {
+            variants.add(pattern.substring(3, pattern.length() - 3));
+        }
+        return variants;
     }
 
     private boolean isExcluded(Path path, List<PathMatcher> matchers) {

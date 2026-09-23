@@ -3,8 +3,10 @@ package net.thevpc.nuts.toolbox.mvn;
 import net.thevpc.nuts.app.NApp;
 import net.thevpc.nuts.app.NApplication;
 import net.thevpc.nuts.app.NAppRun;
+import net.thevpc.nuts.cmdline.NArg;
 import net.thevpc.nuts.cmdline.NCmdLine;
 import net.thevpc.nuts.command.NExecutionException;
+import net.thevpc.nuts.core.NSession;
 import net.thevpc.nuts.io.NOut;
 import net.thevpc.nuts.io.NPath;
 import net.thevpc.nuts.text.NMsg;
@@ -13,6 +15,7 @@ import net.thevpc.nuts.toolbox.mvn.subcommands.MvnJarCompareSubCommand;
 import net.thevpc.nuts.toolbox.mvn.subcommands.MvnVersionSubCommand;
 import net.thevpc.nuts.toolbox.mvn.subcommands.MvnWorksetSubCommand;
 import net.thevpc.nuts.toolbox.mvn.util.MavenCliWrapper;
+import net.thevpc.nuts.util.NOptional;
 import net.thevpc.nuts.util.NRef;
 
 import java.util.ArrayList;
@@ -45,24 +48,37 @@ public class NMvnMain {
         Options o = new Options();
         NCmdLine cmd = NApplication.of().cmdLine();
 
-        cmd.matcher()
-                .when("build").asArg(a -> command.set("build"))
-                .when("get").asArg(a -> command.set("get"))
-                .when("version").asArg(a -> command.set("version"))
-                .when("workset", "ws", "config").asArg(a -> command.set("workset"))
-                .when("clean").asArg(a -> command.set("clean"))
-                .when("diff-jar").asArg(a -> command.set("diff-jar"))
-                .whenNonOption().asRaw(c -> {
-                    if (command.get() == null) {
-                        command.set("default");
+        // Manual split: first known non-option token is the command, everything else
+        // (including options like `clean --simple`) is forwarded to the sub-command.
+        // NSession global options (e.g. -y, --bot, --dry) are consumed first.
+        while (cmd.hasNext()) {
+            if (NSession.of().configureFirst(cmd)) {
+                continue;
+            }
+            if (command.isNull()) {
+                NOptional<NArg> p = cmd.peek();
+                if (p.isPresent() && p.get().isNonOption()) {
+                    String norm = normalizeCommand(p.get().image());
+                    if (norm != null) {
+                        cmd.next();
+                        command.set(norm);
+                        continue;
                     }
-                    args2.addAll(c.nextAllAsStringList());
-                })
-                .withDefaults()
-                .requireAll();
+                    command.set("default");
+                } else if (p.isPresent() && p.get().isOption()) {
+                    // Option before any command (e.g. `nmvn --dry clean` where --dry
+                    // was not a session option). Keep command unresolved and forward it.
+                    args2.add(cmd.next().get().image());
+                    continue;
+                } else {
+                    break;
+                }
+            }
+            args2.add(cmd.next().get().image());
+        }
 
         if (command.isNull()) {
-            command.set("build");
+            command.set(args2.isEmpty() ? "build" : "default");
         }
         if (cmd.isExecMode()) {
             MavenCliWrapper cli = new MavenCliWrapper();
@@ -149,6 +165,30 @@ public class NMvnMain {
                     }
                 }
             }
+        }
+    }
+
+    private static String normalizeCommand(String img) {
+        if (img == null) {
+            return null;
+        }
+        switch (img) {
+            case "build":
+                return "build";
+            case "get":
+                return "get";
+            case "version":
+                return "version";
+            case "workset":
+            case "ws":
+            case "config":
+                return "workset";
+            case "clean":
+                return "clean";
+            case "diff-jar":
+                return "diff-jar";
+            default:
+                return null;
         }
     }
 

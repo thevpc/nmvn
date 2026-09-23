@@ -23,6 +23,7 @@ It provides two submodules:
 - [CLI Command Reference](#cli-command-reference)
   - [Workset Management (`nmvn workset`)](#workset-management-nmvn-workset)
   - [Version Management (`nmvn version`)](#version-management-nmvn-version)
+  - [Project Cleaning (`nmvn clean`)](#project-cleaning-nmvn-clean)
 - [Workset Configuration Format (`workset.tson`)](#workset-configuration-format-worksettson)
 - [Using `nmvn-lib` as a Java Library](#using-nmvn-lib-as-a-java-library)
 - [Building & Testing](#building--testing)
@@ -233,6 +234,25 @@ nmvn version release --strict
 
 # Release specific artifacts with explicit target versions
 nmvn version release -a com.example:core-lib#1.0.0 -a com.example:client-lib#1.0.0
+```
+
+---
+
+### Project Cleaning (`nmvn clean`)
+
+Cleans all Maven projects discovered by the workset scanner (same roots and
+excludes as `nmvn version scan`), so `target/` copies of poms are skipped.
+
+```bash
+# Run `mvn clean` in every scanned project dir
+nmvn clean
+
+# Fast mode: delete `target/` directories directly without invoking Maven
+nmvn clean --simple
+
+# Clean a specific workset, root or exclude (also accepts positional roots)
+nmvn clean --workset backend --simple
+nmvn clean --root ../service-core --exclude "**/skipme/**"
 ```
 
 ---
