@@ -12,6 +12,8 @@ import net.thevpc.nmvn.lib.modifier.PomModifier;
 import net.thevpc.nmvn.lib.scanner.PomScanner;
 import net.thevpc.nuts.artifact.NId;
 import net.thevpc.nuts.io.NPath;
+import net.thevpc.nuts.text.NMsg;
+import net.thevpc.nuts.util.NIllegalArgumentException;
 
 import java.io.IOException;
 import java.util.*;
@@ -86,6 +88,9 @@ public class VersionService {
             NId ga = entry.getKey();
             BumpInstruction inst = entry.getValue();
             PomArtifact artifact = artifacts.get(ga);
+            if(artifact==null){
+                throw new NIllegalArgumentException(NMsg.ofC("failed to find artifact %s",ga));
+            }
             String currentVer = artifact != null ? artifact.getResolvedVersion() : null;
             String toVer = inst.getToVersion();
 

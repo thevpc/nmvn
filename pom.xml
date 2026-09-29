@@ -18,5 +18,6 @@
     <modules>
         <module>nmvn-lib</module>
         <module>nmvn</module>
+        <module>nmvn-full</module>
     </modules>
 </project>

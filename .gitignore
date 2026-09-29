@@ -1,3 +1,6 @@
 /target/
 /nmvn/target/
 /nmvn-lib/target/
+/nmvn-full/.nmvn/version-history.tson
+/nmvn-full/.~lock.pom.xml#
+/nmvn-full/target/
