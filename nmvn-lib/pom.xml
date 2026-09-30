@@ -3,7 +3,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>net.thevpc.nmvn</groupId>
     <artifactId>nmvn-lib</artifactId>
-    <version>1.0.0.0</version>
+    <version>1.1.0.0</version>
     <packaging>jar</packaging>
     <name>Nuts Community Toolbox NMvn Library</name>
     <url>https://github.com/thevpc/nuts</url>
@@ -18,7 +18,7 @@
         <dependency>
             <groupId>net.thevpc.nuts</groupId>
             <artifactId>nuts</artifactId>
-            <version>1.0.0</version>
+            <version>1.1.0</version>
         </dependency>
         <dependency>
             <groupId>org.apache.maven</groupId>
