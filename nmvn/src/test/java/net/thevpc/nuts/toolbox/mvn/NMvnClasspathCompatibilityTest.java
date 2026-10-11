@@ -150,7 +150,7 @@ public class NMvnClasspathCompatibilityTest {
 
     @Test
     public void testSolverResolutionViaApi() {
-        net.thevpc.nuts.core.NWorkspace ws = Nuts.openWorkspace();
+        net.thevpc.nuts.core.NWorkspace ws = Nuts.require();
         NSession session = ws.createSession();
         List<NId> resolved = session.callWith(() ->
                 NSearch.of("net.thevpc.nmvn:nmvn#1.0.0.0")
