@@ -86,6 +86,27 @@ public class NMvnCliTest {
     }
 
     @Test
+    public void testNoIgnoreOptionIncludesGitignoredArtifacts() throws Exception {
+        NPath root = NPath.of(temp.newFolder("cli-ignore-test"));
+        NPath hidden = root.resolve("hidden");
+        createPom(hidden,
+                "<project><groupId>com.cli</groupId><artifactId>hidden</artifactId>"
+                        + "<version>1.0.0-SNAPSHOT</version></project>");
+        root.resolve(".gitignore").writeString("hidden/\n");
+
+        MvnVersionSubCommand cli = new MvnVersionSubCommand();
+        int ignoredCode = cli.run(new String[]{
+                "bump", "--root", root.toString(), "com.cli:hidden#2.0.0", "--dry"
+        });
+        Assert.assertEquals(1, ignoredCode);
+
+        int includedCode = cli.run(new String[]{
+                "bump", "--root", root.toString(), "com.cli:hidden#2.0.0", "--dry", "--no-ignore"
+        });
+        Assert.assertEquals(0, includedCode);
+    }
+
+    @Test
     public void testCliCheckCleanAndDiscrepancy() throws Exception {
         NPath root = NPath.of(temp.newFolder("cli-check-test"));
         NPath mod1 = root.resolve("mod1");

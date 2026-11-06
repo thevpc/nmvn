@@ -32,6 +32,7 @@ public class MvnWorksetSubCommand {
         NRef<String> rootOp = NRef.ofNull();
         NRef<Boolean> recent = NRef.of(false);
         NRef<Boolean> scan = NRef.of(false);
+        NRef<Boolean> noIgnore = NRef.of(false);
 
         List<String> roots = new ArrayList<>();
         List<String> excludes = new ArrayList<>();
@@ -56,6 +57,7 @@ public class MvnWorksetSubCommand {
                         .when("edit").asArg(a -> subCommand.set("edit"))
                         .when("--recent").asFlag(a -> recent.set(a.booleanValue()))
                         .when("--scan").asFlag(a -> scan.set(a.booleanValue()))
+                        .when("--no-ignore").asFlag(a -> noIgnore.set(a.booleanValue()))
                         .when("--name", "--workset").asEntry(a -> worksetName.set(a.stringValue()))
                         .anyMatch()) {
                     cmd.throwUnexpectedArgument();
@@ -66,6 +68,7 @@ public class MvnWorksetSubCommand {
                 } else if (!cmd.matcher()
                         .when("--recent").asFlag(a -> recent.set(a.booleanValue()))
                         .when("--scan").asFlag(a -> scan.set(a.booleanValue()))
+                        .when("--no-ignore").asFlag(a -> noIgnore.set(a.booleanValue()))
                         .when("--name", "--workset").asEntry(a -> worksetName.set(a.stringValue()))
                         .when("--root", "--folder").asEntry(a -> roots.add(a.stringValue()))
                         .when("--exclude").asEntry(a -> excludes.add(a.stringValue()))
@@ -129,15 +132,16 @@ public class MvnWorksetSubCommand {
                     return doGet(worksetName.get(), workingDir);
                 case "set":
                     return doSet(worksetName.get(), workingDir, roots, excludes,
-                            defaultIncrement.get(), snapshotSuffix.get(), cascadePolicy.get(), historyFile.get());
+                            defaultIncrement.get(), snapshotSuffix.get(), cascadePolicy.get(), historyFile.get(),
+                            noIgnore.get());
                 case "add-root":
-                    return doAddRoot(worksetName.get(), workingDir, roots, scan.get());
+                    return doAddRoot(worksetName.get(), workingDir, roots, scan.get(), noIgnore.get());
                 case "remove-root":
-                    return doRemoveRoot(worksetName.get(), workingDir, roots, scan.get());
+                    return doRemoveRoot(worksetName.get(), workingDir, roots, scan.get(), noIgnore.get());
                 case "root-list":
                     return doListRoots(worksetName.get(), workingDir);
                 case "scan":
-                    return doScan(worksetName.get(), workingDir);
+                    return doScan(worksetName.get(), workingDir, noIgnore.get());
                 case "edit":
                     return doEdit(worksetName.get(), workingDir);
                 default:
@@ -239,7 +243,7 @@ public class MvnWorksetSubCommand {
 
     private int doSet(String name, NPath workingDir, List<String> roots, List<String> excludes,
                       String defaultIncrement, String snapshotSuffix, String cascadePolicy,
-                      String historyFile)  {
+                      String historyFile, boolean noIgnore)  {
         NPath targetFile = resolveTargetForSave(name, workingDir);
         NMvnConfig config = targetFile.isRegularFile() ? NMvnConfigLoader.load(targetFile) : new NMvnConfig();
 
@@ -248,6 +252,9 @@ public class MvnWorksetSubCommand {
         }
         if (!excludes.isEmpty()) {
             config.getExcludes().addAll(excludes);
+        }
+        if (noIgnore) {
+            config.setUseDefaultIgnores(false);
         }
         if (defaultIncrement != null && !defaultIncrement.isEmpty()) {
             config.getBumpPolicy().setDefaultIncrement(BumpPolicy.IncrementType.parse(defaultIncrement));
@@ -278,7 +285,8 @@ public class MvnWorksetSubCommand {
         return 0;
     }
 
-    private int doAddRoot(String worksetName, NPath workingDir, List<String> folders, boolean scan)  {
+    private int doAddRoot(String worksetName, NPath workingDir, List<String> folders, boolean scan,
+                          boolean noIgnore)  {
         if (folders.isEmpty()) {
             NOut.println(NMsg.ofStyled("No folders specified to add. Usage: nmvn workset add-root <folder>... [--scan]", NTextStyle.warn()));
             return 1;
@@ -286,6 +294,9 @@ public class MvnWorksetSubCommand {
 
         NPath configFile = resolveTargetForSave(worksetName, workingDir);
         NMvnConfig config = configFile.isRegularFile() ? NMvnConfigLoader.load(configFile) : new NMvnConfig();
+        if (noIgnore) {
+            config.setUseDefaultIgnores(false);
+        }
         List<String> currentRoots = config.getRoots();
         if (currentRoots == null) {
             currentRoots = new ArrayList<>();
@@ -396,7 +407,8 @@ public class MvnWorksetSubCommand {
         return 0;
     }
 
-    private int doRemoveRoot(String worksetName, NPath workingDir, List<String> folders, boolean scan)  {
+    private int doRemoveRoot(String worksetName, NPath workingDir, List<String> folders, boolean scan,
+                             boolean noIgnore)  {
         if (folders.isEmpty()) {
             NOut.println(NMsg.ofStyled("No folders specified to remove. Usage: nmvn workset remove-root <folder>... [--scan]", NTextStyle.warn()));
             return 1;
@@ -408,6 +420,9 @@ public class MvnWorksetSubCommand {
             return 1;
         }
         NMvnConfig config = NMvnConfigLoader.load(configFile);
+        if (noIgnore) {
+            config.setUseDefaultIgnores(false);
+        }
         List<String> currentRoots = config.getRoots();
         if (currentRoots == null || currentRoots.isEmpty()) {
             NOut.println(NMsg.ofStyled("Workset has no configured roots.", NTextStyle.warn()));
@@ -533,10 +548,14 @@ public class MvnWorksetSubCommand {
         return 0;
     }
 
-    private int doScan(String worksetName, NPath workingDir)  {
+    private int doScan(String worksetName, NPath workingDir, boolean noIgnore)  {
         NPath configFile = NMvnConfigLoader.resolveConfigFile(worksetName, workingDir);
         MvnVersionSubCommand versionCli = new MvnVersionSubCommand();
-        return versionCli.run(new String[]{"scan", "--workset", configFile.toString()});
+        List<String> args = new ArrayList<>(Arrays.asList("scan", "--workset", configFile.toString()));
+        if (noIgnore) {
+            args.add("--no-ignore");
+        }
+        return versionCli.run(args.toArray(new String[0]));
     }
 
     private void renderScanSummary(ScanResult scan) {

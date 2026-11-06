@@ -45,6 +45,11 @@ public class NMvnLibTest {
         return pomFile;
     }
 
+    private String simplePom(String groupId, String artifactId, String version) {
+        return "<project><groupId>" + groupId + "</groupId><artifactId>" + artifactId
+                + "</artifactId><version>" + version + "</version></project>";
+    }
+
     @Test
     public void testPropertyInheritanceAndChildOverride() throws Exception {
         NPath root = NPath.of(tempFolder.newFolder("prop-test"));
@@ -563,6 +568,42 @@ public class NMvnLibTest {
     }
 
     @Test
+    public void testImplicitIgnoresAndGitignoreRulesCanBeDisabled() throws Exception {
+        NPath root = NPath.of(tempFolder.newFolder("implicit-ignore-test"));
+        createPom(root.resolve("normal"), simplePom("com.ignore", "normal", "1.0"));
+        createPom(root.resolve("target/generated"), simplePom("com.ignore", "targeted", "1.0"));
+        createPom(root.resolve("node_modules/package"), simplePom("com.ignore", "vendor", "1.0"));
+        createPom(root.resolve("local-build"), simplePom("com.ignore", "ignored", "1.0"));
+        createPom(root.resolve("local-build/keep"), simplePom("com.ignore", "kept", "1.0"));
+        root.resolve("nested").mkdirs();
+        root.resolve("nested/.gitignore").writeString("pom.xml\n");
+        createPom(root.resolve("nested/module"), simplePom("com.ignore", "nested-ignored", "1.0"));
+        root.resolve(".gitignore").writeString(
+                "# ignored output\n" +
+                "local-build/\n" +
+                "!local-build/\n" +
+                "local-build/pom.xml\n" +
+                "!local-build/keep/\n");
+
+        NMvnConfig config = new NMvnConfig();
+        config.setRoots(Collections.singletonList(root.toString()));
+
+        ScanResult scan = service.scan(config, root);
+        Assert.assertEquals(2, scan.getArtifacts().size());
+        Assert.assertTrue(scan.getArtifacts().containsKey(NId.of("com.ignore", "normal")));
+        Assert.assertTrue(scan.getArtifacts().containsKey(NId.of("com.ignore", "kept")));
+        Assert.assertFalse(scan.getArtifacts().containsKey(NId.of("com.ignore", "targeted")));
+        Assert.assertFalse(scan.getArtifacts().containsKey(NId.of("com.ignore", "vendor")));
+        Assert.assertFalse(scan.getArtifacts().containsKey(NId.of("com.ignore", "ignored")));
+
+        config.setUseDefaultIgnores(false);
+        config.setExcludes(Collections.singletonList("**/normal/**"));
+        ScanResult unfiltered = service.scan(config, root);
+        Assert.assertEquals(5, unfiltered.getArtifacts().size());
+        Assert.assertFalse(unfiltered.getArtifacts().containsKey(NId.of("com.ignore", "normal")));
+    }
+
+    @Test
     public void testTsonConfigLoaderRoundtrip() throws Exception {
         NPath root = NPath.of(tempFolder.newFolder("tson-test"));
         NPath configFile = root.resolve("nmvn.tson");
@@ -570,6 +611,7 @@ public class NMvnLibTest {
         NMvnConfig cfg = new NMvnConfig();
         cfg.setRoots(Arrays.asList(".", "../other"));
         cfg.setExcludes(Arrays.asList("**/target/**", "**/build/**"));
+        cfg.setUseDefaultIgnores(false);
         cfg.getBumpPolicy().setDefaultIncrement(BumpPolicy.IncrementType.MAJOR);
         cfg.getBumpPolicy().setCascadePolicy(BumpPolicy.CascadePolicy.CASCADE_VERSIONS);
         cfg.setInstructions(Collections.singletonList(
@@ -581,6 +623,7 @@ public class NMvnLibTest {
 
         NMvnConfig loaded = NMvnConfigLoader.load(configFile);
         Assert.assertEquals(2, loaded.getRoots().size());
+        Assert.assertFalse(loaded.isUseDefaultIgnores());
         Assert.assertEquals(BumpPolicy.IncrementType.MAJOR, loaded.getBumpPolicy().getDefaultIncrement());
         Assert.assertEquals(BumpPolicy.CascadePolicy.CASCADE_VERSIONS, loaded.getBumpPolicy().getCascadePolicy());
         Assert.assertEquals(1, loaded.getInstructions().size());
@@ -1064,7 +1107,7 @@ public class NMvnLibTest {
                 "</project>");
 
         NMvnConfig config = new NMvnConfig();
-        // Clear default excludes to prove target and dist at pom level are skipped inherently
+        // Empty user excludes still honor the built-in generated-directory ignores.
         config.setExcludes(Collections.emptyList());
 
         ScanResult scanResult = service.scan(config, root);

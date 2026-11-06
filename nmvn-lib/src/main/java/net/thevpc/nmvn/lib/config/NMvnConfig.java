@@ -8,19 +8,11 @@ import java.util.*;
 public class NMvnConfig {
     private List<String> roots = new ArrayList<>();
     private List<String> excludes = new ArrayList<>();
+    private boolean useDefaultIgnores = true;
     private Map<String, List<String>> rootExcludes = new LinkedHashMap<>();
     private BumpPolicy bumpPolicy = new BumpPolicy();
     private List<BumpInstruction> instructions = new ArrayList<>();
     private String historyFile = ".nmvn/version-history.tson";
-
-    public NMvnConfig() {
-        // Sensible default global excludes
-        excludes.add("**/target/**");
-        excludes.add("**/build/**");
-        excludes.add("**/.git/**");
-        excludes.add("**/.svn/**");
-        excludes.add("**/.idea/**");
-    }
 
     public List<String> getRoots() {
         return roots;
@@ -36,6 +28,14 @@ public class NMvnConfig {
 
     public void setExcludes(List<String> excludes) {
         this.excludes = excludes != null ? new ArrayList<>(excludes) : new ArrayList<>();
+    }
+
+    public boolean isUseDefaultIgnores() {
+        return useDefaultIgnores;
+    }
+
+    public void setUseDefaultIgnores(boolean useDefaultIgnores) {
+        this.useDefaultIgnores = useDefaultIgnores;
     }
 
     public Map<String, List<String>> getRootExcludes() {

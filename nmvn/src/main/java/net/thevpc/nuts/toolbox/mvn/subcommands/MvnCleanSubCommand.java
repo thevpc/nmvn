@@ -40,6 +40,7 @@ public class MvnCleanSubCommand {
     public int run(String[] args) {
         NCmdLine cmd = NCmdLine.of(args);
         NRef<Boolean> simpleRef = NRef.of(false);
+        NRef<Boolean> noIgnoreRef = NRef.of(false);
         NRef<String> worksetRef = NRef.ofNull();
         List<String> roots = new ArrayList<>();
         List<String> excludes = new ArrayList<>();
@@ -49,6 +50,7 @@ public class MvnCleanSubCommand {
                 // handled by nuts
             } else if (!cmd.matcher()
                     .when("-s", "--simple").asFlag(a -> simpleRef.set(a.booleanValue()))
+                    .when("--no-ignore").asFlag(a -> noIgnoreRef.set(a.booleanValue()))
                     .when("--workset").asEntry(a -> worksetRef.set(a.stringValue()))
                     .when("--root").asEntry(a -> roots.add(a.stringValue()))
                     .when("-r").asEntry(a -> roots.add(a.stringValue()))
@@ -65,6 +67,9 @@ public class MvnCleanSubCommand {
         NMvnConfig config = NMvnConfigLoader.load(cfgFile);
 
         // CLI overrides (same semantics as `version scan`)
+        if (noIgnoreRef.get()) {
+            config.setUseDefaultIgnores(false);
+        }
         if (!roots.isEmpty()) {
             for (String r : roots) {
                 NPath p = workingDir.resolve(r);

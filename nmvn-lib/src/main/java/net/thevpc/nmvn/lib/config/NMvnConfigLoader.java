@@ -189,6 +189,7 @@ public class NMvnConfigLoader {
                 config.setExcludes(eList);
             }
         });
+        obj.getBooleanValue("useDefaultIgnores").ifPresent(config::setUseDefaultIgnores);
 
         // rootExcludes
         obj.get("rootExcludes").flatMap(NElement::asObject).ifPresent(reObj -> {
@@ -256,6 +257,7 @@ public class NMvnConfigLoader {
             excArr.add(NElement.ofString(e));
         }
         builder.set("excludes", excArr.build());
+        builder.set("useDefaultIgnores", NElement.ofBoolean(config.isUseDefaultIgnores()));
 
         // rootExcludes
         if (!config.getRootExcludes().isEmpty()) {

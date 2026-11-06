@@ -12,6 +12,10 @@ manage multi-project maven worksets and versions
 
 ##) OPTIONS:
 
+    ```sh --no-ignore```
+        disable implicit generated-directory and `.gitignore` filtering for scan-based commands.
+        Explicit `--exclude` patterns remain active.
+
     ```sh -a <GA[#VER]> | -a=<GA[#VER]> | --artifact=<GA[#VER]>```
         specify target artifact and optional version using standard Nuts '#' delimiter (e.g. `com.example:mod1#1.0.0.0`) or '=' delimiter (`com.example:mod1=1.0.0.0`). For bump, omitting version auto-increments using the selected or default policy. Can be specified multiple times.
 

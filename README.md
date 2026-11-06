@@ -45,7 +45,6 @@ nmvn workset set backend \
   --root ../service-api \
   --root ../service-core \
   --root ../service-jobs \
-  --exclude "**/target/**" \
   --exclude "**/generated/**" \
   --default-increment patch \
   --cascade-policy cascade-references-only
@@ -208,8 +207,16 @@ replacement of property-indirected versions or property aliases. Concrete
 declared properties can be updated; for alias chains, update the terminal
 property explicitly rather than flattening the alias. Malformed or non-project
 `pom.xml` files are reported as scan warnings.
-Read-only scans and checks continue, but mutating commands refuse an incomplete
-scan so skipped projects cannot conceal references that should be updated.
+By default, the scanner also honors `.gitignore` files and skips common generated
+or tool-managed directories such as `target`, `build`, `dist`, `.git`, `.hg`,
+`.svn`, `.idea`, `.gradle`, and `node_modules`. It reads root and nested
+`.gitignore` files (not Git's global excludes file); common glob, directory, and
+negated patterns are supported. Set `useDefaultIgnores: false` in a workset or
+pass `--no-ignore` to scan, check, bump, update, release, clean, or workset scan
+to disable both these defaults and `.gitignore` rules; explicit `--exclude`
+patterns remain active. Read-only scans and checks continue, but mutating
+commands refuse an incomplete scan so skipped projects cannot conceal
+references that should be updated.
 Review the warning, fix or exclude the file, then rerun the command.
 `version scan --json` includes both `artifacts` and `warnings`. Apply stages
 replacement and backup files beside each POM, checks for concurrent edits, then
@@ -316,6 +323,9 @@ nmvn version scan
 
 # Output structured JSON
 nmvn version scan --json
+
+# Include directories normally hidden by default ignores and .gitignore
+nmvn version scan --no-ignore
 ```
 
 #### 2. Audit Workspace for Discrepancies (`check`)
@@ -421,6 +431,9 @@ nmvn clean --simple
 # Clean a specific workset, root or exclude (also accepts positional roots)
 nmvn clean --workset backend --simple
 nmvn clean --root ../service-core --exclude "**/skipme/**"
+
+# Include ignored/generated projects in the scan (use with care)
+nmvn clean --no-ignore
 ```
 
 ---
@@ -440,11 +453,12 @@ Workset configurations are stored in **TSON** (Tabular / Typed Structured Object
 
   // Global glob exclusion patterns
   excludes : [
-    "**/target/**" ,
-    "**/build/**" ,
-    "**/.git/**" ,
-    "**/.idea/**"
+    "**/generated/**" ,
+    "**/local-only/**"
   ] ,
+
+  // Honor .gitignore and common generated/tool directories unless explicitly disabled
+  useDefaultIgnores : true ,
 
   // Default versioning rules
   bumpPolicy : {

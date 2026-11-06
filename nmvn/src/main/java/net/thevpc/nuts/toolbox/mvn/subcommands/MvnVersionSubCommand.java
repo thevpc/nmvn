@@ -39,6 +39,7 @@ public class MvnVersionSubCommand {
         String configPath = null;
         boolean strict = false;
         boolean failOnWarning = false;
+        boolean noIgnore = false;
         boolean allArtifacts = false;
         BumpPolicy.CascadePolicy cascadePolicy = null;
         BumpPolicy.IncrementType increment = null;
@@ -100,6 +101,9 @@ public class MvnVersionSubCommand {
         NMvnConfig config = NMvnConfigLoader.load(cfgFile);
 
         // Apply CLI overrides
+        if (oo.noIgnore) {
+            config.setUseDefaultIgnores(false);
+        }
         if (!oo.roots.isEmpty()) {
             config.setRoots(oo.roots);
         }
@@ -140,6 +144,7 @@ public class MvnVersionSubCommand {
                 .when("-w", "--workset", "--config").asEntry(a -> oo.configPath = a.stringValue())
                 .when("--strict").asFlag(a -> oo.strict = a.booleanValue())
                 .when("--fail-on-warning").asFlag(a -> oo.failOnWarning = a.booleanValue())
+                .when("--no-ignore").asFlag(a -> oo.noIgnore = a.booleanValue())
                 .when("-c", "--cascade", "--cascade-policy").asEntry(a -> oo.cascadePolicy = BumpPolicy.CascadePolicy.parse(a.stringValue()))
                 .when("--cascade-versions").asFlag(a -> {
                     if (a.booleanValue()) {
@@ -174,6 +179,7 @@ public class MvnVersionSubCommand {
                 .when("--all").asFlag(a -> oo.allArtifacts = a.booleanValue())
                 .when("--strict").asFlag(a -> oo.strict = a.booleanValue())
                 .when("--fail-on-warning").asFlag(a -> oo.failOnWarning = a.booleanValue())
+                .when("--no-ignore").asFlag(a -> oo.noIgnore = a.booleanValue())
                 .when("-c", "--cascade", "--cascade-policy").asEntry(a -> oo.cascadePolicy = BumpPolicy.CascadePolicy.parse(a.stringValue()))
                 .when("--cascade-versions").asFlag(a -> {
                     if (a.booleanValue()) {
@@ -236,6 +242,7 @@ public class MvnVersionSubCommand {
                 .when("-w", "--workset", "--config").asEntry(a -> oo.configPath = a.stringValue())
                 .when("--strict").asFlag(a -> oo.strict = a.booleanValue())
                 .when("--fail-on-warning").asFlag(a -> oo.failOnWarning = a.booleanValue())
+                .when("--no-ignore").asFlag(a -> oo.noIgnore = a.booleanValue())
                 .when("-p", "--patch").asFlag(a -> oo.increment = BumpPolicy.IncrementType.PATCH)
                 .when("-m", "--minor").asFlag(a -> oo.increment = BumpPolicy.IncrementType.MINOR)
                 .when("-M", "--major").asFlag(a -> oo.increment = BumpPolicy.IncrementType.MAJOR)
@@ -446,6 +453,7 @@ public class MvnVersionSubCommand {
                 .when("-w", "--workset", "--config").asEntry(a -> oo.configPath = a.stringValue())
                 .when("--strict").asFlag(a -> oo.strict = a.booleanValue())
                 .when("--fail-on-warning").asFlag(a -> oo.failOnWarning = a.booleanValue())
+                .when("--no-ignore").asFlag(a -> oo.noIgnore = a.booleanValue())
                 .when("-p", "--patch").asFlag(a -> oo.increment = BumpPolicy.IncrementType.PATCH)
                 .when("-m", "--minor").asFlag(a -> oo.increment = BumpPolicy.IncrementType.MINOR)
                 .when("-M", "--major").asFlag(a -> oo.increment = BumpPolicy.IncrementType.MAJOR)
@@ -479,6 +487,7 @@ public class MvnVersionSubCommand {
                 .when("-w", "--workset", "--config").asEntry(a -> oo.configPath = a.stringValue())
                 .when("--strict").asFlag(a -> oo.strict = a.booleanValue())
                 .when("--fail-on-warning").asFlag(a -> oo.failOnWarning = a.booleanValue())
+                .when("--no-ignore").asFlag(a -> oo.noIgnore = a.booleanValue())
                 .when("-p", "--patch").asFlag(a -> oo.increment = BumpPolicy.IncrementType.PATCH)
                 .when("-m", "--minor").asFlag(a -> oo.increment = BumpPolicy.IncrementType.MINOR)
                 .when("-M", "--major").asFlag(a -> oo.increment = BumpPolicy.IncrementType.MAJOR)
