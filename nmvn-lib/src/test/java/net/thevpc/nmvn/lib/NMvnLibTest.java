@@ -7,13 +7,14 @@ import net.thevpc.nmvn.lib.exception.CycleDetectedException;
 import net.thevpc.nmvn.lib.exception.StrictSnapshotException;
 import net.thevpc.nmvn.lib.diagnostic.*;
 import net.thevpc.nmvn.lib.model.*;
-import net.thevpc.nuts.Nuts;
-import net.thevpc.nuts.artifact.NId;
 import net.thevpc.nmvn.lib.modifier.PomModifier;
 import net.thevpc.nmvn.lib.service.BumpResult;
 import net.thevpc.nmvn.lib.service.ReleaseResult;
 import net.thevpc.nmvn.lib.service.ScanResult;
 import net.thevpc.nmvn.lib.service.VersionService;
+import net.thevpc.nuts.Nuts;
+import net.thevpc.nuts.artifact.NId;
+import net.thevpc.nuts.util.NIllegalArgumentException;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
@@ -366,6 +367,123 @@ public class NMvnLibTest {
         service.bump(config, root, bumps, false, true);
         String updatedOnDisk = pom.readString();
         Assert.assertTrue(updatedOnDisk.contains("<version>1.0.0.0</version>"));
+    }
+
+    @Test
+    public void testBumpOnlyChangesSelectedArtifactAndReferencesByDefault() throws Exception {
+        NPath root = NPath.of(tempFolder.newFolder("scoped-bump-test"));
+        NPath corePom = createPom(root.resolve("core"),
+                "<project>\n" +
+                "  <modelVersion>4.0.0</modelVersion>\n" +
+                "  <groupId>com.app</groupId>\n" +
+                "  <artifactId>core</artifactId>\n" +
+                "  <version>1.0.0</version>\n" +
+                "</project>");
+        NPath appPom = createPom(root.resolve("app"),
+                "<project>\n" +
+                "  <modelVersion>4.0.0</modelVersion>\n" +
+                "  <groupId>com.app</groupId>\n" +
+                "  <artifactId>app</artifactId>\n" +
+                "  <version>2.0.0</version>\n" +
+                "  <dependencies>\n" +
+                "    <dependency>\n" +
+                "      <groupId>com.app</groupId>\n" +
+                "      <artifactId>core</artifactId>\n" +
+                "      <version>1.0.0</version>\n" +
+                "    </dependency>\n" +
+                "  </dependencies>\n" +
+                "</project>");
+
+        NMvnConfig config = new NMvnConfig();
+        config.setRoots(Collections.singletonList(root.toString()));
+
+        BumpResult result = service.bump(config, root,
+                Collections.singletonList(new BumpInstruction("com.app", "core", "1.1.0")),
+                null, (BumpPolicy.CascadePolicy) null, false, true);
+
+        Assert.assertEquals(BumpPolicy.CascadePolicy.CASCADE_REFERENCES_ONLY,
+                config.getBumpPolicy().getCascadePolicy());
+        Assert.assertEquals(2, result.getChanges().size());
+        Assert.assertTrue(corePom.readString().contains("<version>1.1.0</version>"));
+        Assert.assertTrue(appPom.readString().contains("<version>2.0.0</version>"));
+        Assert.assertTrue(appPom.readString().contains("<version>1.1.0</version>"));
+
+        try {
+            service.bump(config, root, Collections.emptyList(), null,
+                    (BumpPolicy.CascadePolicy) null, false, false);
+            Assert.fail("An empty target set must not bump the whole workspace implicitly");
+        } catch (NIllegalArgumentException expected) {
+            Assert.assertTrue(expected.getMessage().contains("No bump targets"));
+        }
+    }
+
+    @Test
+    public void testIncompleteScanIsReportedAndCannotBeModified() throws Exception {
+        NPath root = NPath.of(tempFolder.newFolder("incomplete-scan-test"));
+        NPath validPom = createPom(root.resolve("valid"),
+                "<project>\n" +
+                "  <modelVersion>4.0.0</modelVersion>\n" +
+                "  <groupId>com.app</groupId>\n" +
+                "  <artifactId>valid</artifactId>\n" +
+                "  <version>1.0.0</version>\n" +
+                "</project>");
+        createPom(root.resolve("broken"),
+                "<project><groupId>com.app</groupId><artifactId>broken</project>");
+
+        NMvnConfig config = new NMvnConfig();
+        config.setRoots(Collections.singletonList(root.toString()));
+        ScanResult scan = service.scan(config, root);
+        Assert.assertEquals(1, scan.getWarnings().size());
+        Assert.assertTrue(scan.getWarnings().get(0).contains("broken/pom.xml"));
+        Assert.assertTrue(service.check(scan, config).hasErrors());
+
+        try {
+            service.bump(config, root,
+                    Collections.singletonList(new BumpInstruction("com.app", "valid", "2.0.0")),
+                    null, (BumpPolicy.CascadePolicy) null, false, true);
+            Assert.fail("An incomplete scan must not be used to apply a version change");
+        } catch (NIllegalArgumentException expected) {
+            Assert.assertTrue(expected.getMessage().contains("incomplete scan"));
+        }
+        Assert.assertTrue(validPom.readString().contains("<version>1.0.0</version>"));
+    }
+
+    @Test
+    public void testDependencyEditUsesDirectCoordinatesOnly() {
+        String pom =
+                "<project>\n" +
+                "  <!-- <dependency><groupId>com.target</groupId><artifactId>lib</artifactId><version>9.0</version></dependency> -->\n" +
+                "  <dependencies>\n" +
+                "    <dependency>\n" +
+                "      <groupId>com.other</groupId>\n" +
+                "      <artifactId>unrelated</artifactId>\n" +
+                "      <version>1.0</version>\n" +
+                "      <exclusions><exclusion><groupId>com.target</groupId><artifactId>lib</artifactId></exclusion></exclusions>\n" +
+                "    </dependency>\n" +
+                "    <dependency>\n" +
+                "      <groupId>com.target</groupId>\n" +
+                "      <artifactId>lib</artifactId>\n" +
+                "      <version>1.0</version>\n" +
+                "    </dependency>\n" +
+                "  </dependencies>\n" +
+                "</project>";
+
+        String updated = PomModifier.updateDependencyVersion(pom, "com.target", "lib", "2.0");
+        Assert.assertTrue(updated.contains("<version>1.0</version>"));
+        Assert.assertTrue(updated.contains("<version>2.0</version>"));
+        Assert.assertTrue(updated.contains("<version>9.0</version>"));
+    }
+
+    @Test
+    public void testPropertyEditRefusesAmbiguousMatches() {
+        String pom = "<project><properties><shared.version>1</shared.version>"
+                + "<shared.version>2</shared.version></properties></project>";
+        try {
+            PomModifier.updateProperty(pom, "shared.version", "3");
+            Assert.fail("A duplicated property must not be edited ambiguously");
+        } catch (IllegalArgumentException expected) {
+            Assert.assertTrue(expected.getMessage().contains("found 2"));
+        }
     }
 
     @Test

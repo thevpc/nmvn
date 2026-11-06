@@ -9,6 +9,9 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class PomModifier {
+    private static final Pattern XML_TAGS = Pattern.compile(
+            "(?s)<!--.*?-->|<!\\[CDATA\\[.*?\\]\\]>|<\\?.*?\\?>|<!DOCTYPE\\b.*?>"
+                    + "|<(/?)([A-Za-z_][A-Za-z0-9_.:-]*)(?:\\s[^<>]*?)?(/?)>");
 
     public PomChange createPomChange(NPath pomFile, String updatedContent) {
         String originalContent = pomFile.readString();
@@ -72,150 +75,205 @@ public class PomModifier {
     }
 
     public static String updateProperty(String content, String propertyName, String newVersion) {
-        Pattern propSectionPattern = Pattern.compile("(?s)(<properties\\b[^>]*>)(.*?)(</properties>)");
-        Matcher propSectionMatcher = propSectionPattern.matcher(content);
-        if (!propSectionMatcher.find()) {
-            return content;
-        }
-
-        String before = content.substring(0, propSectionMatcher.start(2));
-        String propsBody = propSectionMatcher.group(2);
-        String after = content.substring(propSectionMatcher.end(2));
-
-        Pattern tagPattern = Pattern.compile("(?s)(<" + Pattern.quote(propertyName) + "\\b[^>]*>)(.*?)(</" + Pattern.quote(propertyName) + ">)");
-        Matcher tagMatcher = tagPattern.matcher(propsBody);
-        if (tagMatcher.find()) {
-            String updatedBody = tagMatcher.replaceFirst(Matcher.quoteReplacement(tagMatcher.group(1))
-                    + Matcher.quoteReplacement(replaceVersionInsideTag(tagMatcher.group(2), newVersion))
-                    + Matcher.quoteReplacement(tagMatcher.group(3)));
-            return before + updatedBody + after;
-        }
-
-        return content;
+        TagRange project = uniqueRoot(content, "project");
+        TagRange properties = uniqueChild(content, project, "properties", "properties section");
+        TagRange property = uniqueChild(content, properties, propertyName, "property " + propertyName);
+        return replaceBody(content, property, newVersion);
     }
 
     public static String updateProjectVersion(String content, String newVersion) {
-        Pattern versionPattern = Pattern.compile("(?s)(<version\\b[^>]*>)(.*?)(</version>)");
-        Matcher matcher = versionPattern.matcher(content);
-
-        // Find parent block bounds if any
-        int parentStart = -1, parentEnd = -1;
-        Matcher parentMatcher = Pattern.compile("(?s)<parent\\b[^>]*>.*?</parent>").matcher(content);
-        if (parentMatcher.find()) {
-            parentStart = parentMatcher.start();
-            parentEnd = parentMatcher.end();
-        }
-
-        while (matcher.find()) {
-            int start = matcher.start();
-            // Skip if inside parent
-            if (parentStart != -1 && start >= parentStart && start <= parentEnd) {
-                continue;
-            }
-            // Skip if inside dependency or plugin or build
-            String preceding = content.substring(0, start);
-            int lastDep = preceding.lastIndexOf("<dependency");
-            int lastDepEnd = preceding.lastIndexOf("</dependency>");
-            if (lastDep != -1 && lastDep > lastDepEnd) {
-                continue;
-            }
-            int lastPlugin = preceding.lastIndexOf("<plugin");
-            int lastPluginEnd = preceding.lastIndexOf("</plugin>");
-            if (lastPlugin != -1 && lastPlugin > lastPluginEnd) {
-                continue;
-            }
-
-            // This is the project's own version!
-            String updatedInner = replaceVersionInsideTag(matcher.group(2), newVersion);
-            return content.substring(0, matcher.start(2)) + updatedInner + content.substring(matcher.end(2));
-        }
-
-        return content;
+        TagRange project = uniqueRoot(content, "project");
+        return replaceBody(content, uniqueChild(content, project, "version", "project version"), newVersion);
     }
 
     public static String updateParentVersion(String content, String newVersion) {
-        Pattern parentPattern = Pattern.compile("(?s)(<parent\\b[^>]*>)(.*?)(</parent>)");
-        Matcher parentMatcher = parentPattern.matcher(content);
-        if (parentMatcher.find()) {
-            String before = content.substring(0, parentMatcher.start(2));
-            String parentBody = parentMatcher.group(2);
-            String after = content.substring(parentMatcher.end(2));
-
-            Pattern verPattern = Pattern.compile("(?s)(<version\\b[^>]*>)(.*?)(</version>)");
-            Matcher verMatcher = verPattern.matcher(parentBody);
-            if (verMatcher.find()) {
-                String updatedInner = replaceVersionInsideTag(verMatcher.group(2), newVersion);
-                String updatedParent = verMatcher.replaceFirst(Matcher.quoteReplacement(verMatcher.group(1))
-                        + Matcher.quoteReplacement(updatedInner)
-                        + Matcher.quoteReplacement(verMatcher.group(3)));
-                return before + updatedParent + after;
-            }
-        }
-        return content;
+        TagRange project = uniqueRoot(content, "project");
+        TagRange parent = uniqueChild(content, project, "parent", "parent section");
+        return replaceBody(content, uniqueChild(content, parent, "version", "parent version"), newVersion);
     }
 
     public static String updateDependencyVersion(String content, String groupId, String artifactId, String newVersion) {
-        Pattern depPattern = Pattern.compile("(?s)<dependency\\b[^>]*>.*?</dependency>");
-        Matcher depMatcher = depPattern.matcher(content);
-
-        StringBuffer sb = new StringBuffer();
-        while (depMatcher.find()) {
-            String depBlock = depMatcher.group();
-            if (containsCoordinates(depBlock, groupId, artifactId)) {
-                Pattern verPattern = Pattern.compile("(?s)(<version\\b[^>]*>)(.*?)(</version>)");
-                Matcher verMatcher = verPattern.matcher(depBlock);
-                if (verMatcher.find()) {
-                    String updatedInner = replaceVersionInsideTag(verMatcher.group(2), newVersion);
-                    String updatedBlock = verMatcher.replaceFirst(Matcher.quoteReplacement(verMatcher.group(1))
-                            + Matcher.quoteReplacement(updatedInner)
-                            + Matcher.quoteReplacement(verMatcher.group(3)));
-                    depMatcher.appendReplacement(sb, Matcher.quoteReplacement(updatedBlock));
-                    continue;
-                }
-            }
-            depMatcher.appendReplacement(sb, Matcher.quoteReplacement(depBlock));
-        }
-        depMatcher.appendTail(sb);
-        return sb.toString();
+        return updateCoordinateBlocks(content, "dependency", groupId, artifactId, newVersion);
     }
 
     public static String updatePluginVersion(String content, String groupId, String artifactId, String newVersion) {
-        Pattern pluginPattern = Pattern.compile("(?s)<plugin\\b[^>]*>.*?</plugin>");
-        Matcher pluginMatcher = pluginPattern.matcher(content);
-
-        StringBuffer sb = new StringBuffer();
-        while (pluginMatcher.find()) {
-            String pluginBlock = pluginMatcher.group();
-            boolean matchesGroup = groupId == null || "org.apache.maven.plugins".equals(groupId)
-                    || pluginBlock.contains("<groupId>" + groupId + "</groupId>");
-            boolean matchesArtifact = pluginBlock.contains("<artifactId>" + artifactId + "</artifactId>");
-
-            if (matchesGroup && matchesArtifact) {
-                // Replace outer plugin version (not inside an inner dependency)
-                int innerDepIdx = pluginBlock.indexOf("<dependencies>");
-                String pluginHeader = innerDepIdx != -1 ? pluginBlock.substring(0, innerDepIdx) : pluginBlock;
-                String pluginTail = innerDepIdx != -1 ? pluginBlock.substring(innerDepIdx) : "";
-
-                Pattern verPattern = Pattern.compile("(?s)(<version\\b[^>]*>)(.*?)(</version>)");
-                Matcher verMatcher = verPattern.matcher(pluginHeader);
-                if (verMatcher.find()) {
-                    String updatedInner = replaceVersionInsideTag(verMatcher.group(2), newVersion);
-                    String updatedHeader = verMatcher.replaceFirst(Matcher.quoteReplacement(verMatcher.group(1))
-                            + Matcher.quoteReplacement(updatedInner)
-                            + Matcher.quoteReplacement(verMatcher.group(3)));
-                    pluginMatcher.appendReplacement(sb, Matcher.quoteReplacement(updatedHeader + pluginTail));
-                    continue;
-                }
-            }
-            pluginMatcher.appendReplacement(sb, Matcher.quoteReplacement(pluginBlock));
-        }
-        pluginMatcher.appendTail(sb);
-        return sb.toString();
+        return updateCoordinateBlocks(content, "plugin", groupId, artifactId, newVersion);
     }
 
-    private static boolean containsCoordinates(String block, String groupId, String artifactId) {
-        boolean matchGroup = groupId == null || block.contains("<groupId>" + groupId + "</groupId>");
-        boolean matchArtifact = artifactId == null || block.contains("<artifactId>" + artifactId + "</artifactId>");
-        return matchGroup && matchArtifact;
+    private static String updateCoordinateBlocks(String content, String elementName, String groupId,
+                                                 String artifactId, String newVersion) {
+        List<TagRange> projects = findElements(content, 0, content.length(), "project");
+        if (projects.size() != 1) {
+            throw new IllegalArgumentException("Expected one <project> element while updating " + elementName);
+        }
+        List<TagRange> matches = new ArrayList<>();
+        for (TagRange block : findDescendants(content, projects.get(0).bodyStart, projects.get(0).bodyEnd, elementName)) {
+            String g = childText(content, block, "groupId");
+            String a = childText(content, block, "artifactId");
+            if (artifactId.equals(a) && (groupId == null || groupId.equals(g)
+                    || ("org.apache.maven.plugins".equals(groupId) && g == null))) {
+                matches.add(block);
+            }
+        }
+        String updated = content;
+        int versionCount = 0;
+        for (int i = matches.size() - 1; i >= 0; i--) {
+            TagRange block = matches.get(i);
+            List<TagRange> versions = findElements(content, block.bodyStart, block.bodyEnd, "version");
+            if (versions.size() > 1) {
+                throw new IllegalArgumentException("Ambiguous <version> in " + elementName + " "
+                        + groupId + ":" + artifactId);
+            }
+            if (versions.size() == 1) {
+                versionCount++;
+                TagRange version = versions.get(0);
+                if (content.substring(version.start, version.end).trim().endsWith("/>")) {
+                    throw new IllegalArgumentException("Cannot update a self-closing <version> in " + elementName);
+                }
+                updated = updated.substring(0, version.bodyStart)
+                        + replaceVersionInsideTag(content.substring(version.bodyStart, version.bodyEnd), newVersion)
+                        + updated.substring(version.bodyEnd);
+            }
+        }
+        if (!matches.isEmpty() && versionCount == 0) {
+            throw new IllegalArgumentException("Matched " + elementName + " " + groupId + ":" + artifactId
+                    + " has no explicit <version> to update");
+        }
+        return updated;
+    }
+
+    private static String childText(String content, TagRange parent, String name) {
+        List<TagRange> children = findElements(content, parent.bodyStart, parent.bodyEnd, name);
+        if (children.size() > 1) {
+            throw new IllegalArgumentException("Ambiguous <" + name + "> in Maven coordinates");
+        }
+        if (children.isEmpty()) {
+            return null;
+        }
+        String text = content.substring(children.get(0).bodyStart, children.get(0).bodyEnd);
+        return text.replaceAll("(?s)<!--.*?-->", "").trim();
+    }
+
+    private static TagRange uniqueRoot(String content, String name) {
+        List<TagRange> found = findElements(content, 0, content.length(), name);
+        if (found.size() != 1) {
+            throw new IllegalArgumentException("Expected one <" + name + "> element");
+        }
+        return found.get(0);
+    }
+
+    private static TagRange uniqueChild(String content, TagRange parent, String name, String description) {
+        List<TagRange> found = findElements(content, parent.bodyStart, parent.bodyEnd, name);
+        if (found.size() != 1) {
+            throw new IllegalArgumentException("Expected exactly one " + description + ", found " + found.size());
+        }
+        return found.get(0);
+    }
+
+    private static String replaceBody(String content, TagRange tag, String newVersion) {
+        if (content.substring(tag.start, tag.end).trim().endsWith("/>")) {
+            throw new IllegalArgumentException("Cannot replace the body of a self-closing XML element");
+        }
+        String body = content.substring(tag.bodyStart, tag.bodyEnd);
+        return content.substring(0, tag.bodyStart) + replaceVersionInsideTag(body, newVersion)
+                + content.substring(tag.bodyEnd);
+    }
+
+    private static List<TagRange> findElements(String content, int start, int end, String wantedName) {
+        List<TagRange> result = new ArrayList<>();
+        Matcher matcher = XML_TAGS.matcher(content);
+        matcher.region(start, end);
+        List<String> stack = new ArrayList<>();
+        int directStart = -1;
+        int directBodyStart = -1;
+        String directName = null;
+        while (matcher.find()) {
+            if (matcher.group(2) == null) {
+                continue;
+            }
+            String name = matcher.group(2);
+            boolean closing = !matcher.group(1).isEmpty();
+            boolean selfClosing = !matcher.group(3).isEmpty();
+            if (closing) {
+                if (!stack.isEmpty()) {
+                    String popped = stack.remove(stack.size() - 1);
+                    if (stack.isEmpty() && wantedName.equals(directName) && wantedName.equals(popped)) {
+                        result.add(new TagRange(directStart, matcher.end(), directBodyStart, matcher.start()));
+                        directStart = -1;
+                        directBodyStart = -1;
+                        directName = null;
+                    }
+                }
+            } else {
+                if (stack.isEmpty() && wantedName.equals(name)) {
+                    directStart = matcher.start();
+                    directBodyStart = matcher.end();
+                    directName = name;
+                    if (selfClosing) {
+                        result.add(new TagRange(directStart, matcher.end(), matcher.end(), matcher.end()));
+                        directStart = -1;
+                        directBodyStart = -1;
+                        directName = null;
+                    }
+                }
+                if (!selfClosing) {
+                    stack.add(name);
+                }
+            }
+        }
+        return result;
+    }
+
+    private static List<TagRange> findDescendants(String content, int start, int end, String wantedName) {
+        List<TagRange> result = new ArrayList<>();
+        Matcher matcher = XML_TAGS.matcher(content);
+        matcher.region(start, end);
+        List<TagRange> stack = new ArrayList<>();
+        while (matcher.find()) {
+            if (matcher.group(2) == null) {
+                continue;
+            }
+            String name = matcher.group(2);
+            boolean closing = !matcher.group(1).isEmpty();
+            boolean selfClosing = !matcher.group(3).isEmpty();
+            if (closing) {
+                if (!stack.isEmpty()) {
+                    TagRange opened = stack.remove(stack.size() - 1);
+                    if (wantedName.equals(opened.tagName)) {
+                        result.add(new TagRange(opened.start, matcher.end(), opened.bodyStart, matcher.start(), opened.tagName));
+                    }
+                }
+            } else {
+                TagRange opened = new TagRange(matcher.start(), matcher.end(), matcher.end(), matcher.end(), name);
+                if (selfClosing) {
+                    if (wantedName.equals(name)) {
+                        result.add(opened);
+                    }
+                } else {
+                    stack.add(opened);
+                }
+            }
+        }
+        return result;
+    }
+
+    private static final class TagRange {
+        final int start;
+        final int end;
+        final int bodyStart;
+        final int bodyEnd;
+        final String tagName;
+
+        TagRange(int start, int end, int bodyStart, int bodyEnd) {
+            this(start, end, bodyStart, bodyEnd, null);
+        }
+
+        TagRange(int start, int end, int bodyStart, int bodyEnd, String tagName) {
+            this.start = start;
+            this.end = end;
+            this.bodyStart = bodyStart;
+            this.bodyEnd = bodyEnd;
+            this.tagName = tagName;
+        }
     }
 }

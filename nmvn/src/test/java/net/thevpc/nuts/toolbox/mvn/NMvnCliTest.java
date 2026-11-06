@@ -395,7 +395,7 @@ public class NMvnCliTest {
         MvnVersionSubCommand cli = new MvnVersionSubCommand();
 
         // Update mod-a to 1.0.0.0
-        int code = cli.run(new String[]{"update", "--root", root.toString(), "-a", "com.cli:mod-a#1.0.0.0"});
+        int code = cli.run(new String[]{"update", "--root", root.toString(), "-a", "com.cli:mod-a#1.0.0.0", "--cascade-versions"});
         Assert.assertEquals(0, code);
 
         // 1. mod-a should be 1.0.0.0
@@ -469,8 +469,8 @@ public class NMvnCliTest {
                 "  <version>1.0.0</version>\n" +
                 "</project>");
 
-        // Bump major across whole workspace (no -a passed): 1.0.0 -> 2.0.0-SNAPSHOT
-        int c2 = cli.run(new String[]{"bump", "--root", root.toString(), "--major"});
+        // Bumping the whole workspace must be explicit: 1.0.0 -> 2.0.0-SNAPSHOT
+        int c2 = cli.run(new String[]{"bump", "--all", "--root", root.toString(), "--major"});
         Assert.assertEquals(0, c2);
         Assert.assertTrue(mod1.resolve("pom.xml").readString().contains("<version>2.0.0-SNAPSHOT</version>"));
     }
@@ -576,5 +576,28 @@ public class NMvnCliTest {
         Assert.assertTrue(bContent.contains("<version>1.0.0</version>"));
         // mod-b own version should remain 2.0.0
         Assert.assertTrue(bContent.contains("<version>2.0.0</version>"));
+    }
+
+    @Test
+    public void testBumpRequiresExplicitArtifactOrAll() throws IOException {
+        NPath root = NPath.of(temp.newFolder("cli-bump-scope-test"));
+        NPath mod1 = root.resolve("mod1");
+        createPom(mod1,
+                "<project>\n" +
+                "  <modelVersion>4.0.0</modelVersion>\n" +
+                "  <groupId>com.cli</groupId>\n" +
+                "  <artifactId>mod1</artifactId>\n" +
+                "  <version>1.0.0</version>\n" +
+                "</project>");
+
+        MvnVersionSubCommand cli = new MvnVersionSubCommand();
+
+        int unscoped = cli.run(new String[]{"bump", "-r", root.toString(), "-p"});
+        Assert.assertEquals(1, unscoped);
+        Assert.assertTrue(mod1.resolve("pom.xml").readString().contains("<version>1.0.0</version>"));
+
+        int previewAll = cli.run(new String[]{"bump", "-r", root.toString(), "--all", "-p", "--dry"});
+        Assert.assertEquals(0, previewAll);
+        Assert.assertTrue(mod1.resolve("pom.xml").readString().contains("<version>1.0.0</version>"));
     }
 }

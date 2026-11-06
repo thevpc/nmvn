@@ -5,7 +5,7 @@ manage multi-project maven worksets and versions
 ==nmvn== [**--version** <MVN_VERSION>] [{{args...}}]
 ==nmvn== **workset** [**list**|**path**|**get**|**set**|**add-root**|**remove-root**|**scan**|**edit**] [{{options...}}]
 ==nmvn== **version scan**    [**--workset** <FILE>] [**-j**|**--json**]
-==nmvn== **version bump**    [**--workset** <FILE>] [**--dry**] [**--patch**|**--minor**|**--major**] [**--force**] [**--cascade**=<versions|references|none>] [**-a** <GA[#VER]>]...
+==nmvn== **version bump**    [**--workset** <FILE>] [**--dry**] [**--patch**|**--minor**|**--major**] [**--all**] [**--force**] [**--cascade**=<versions|references|none>] [**-a** <GA[#VER]>]...
 ==nmvn== **version update**  [**--workset** <FILE>] [**--dry**] [**--cascade**=<versions|references|none>] [**-a** <GA#VER>]...
 ==nmvn== **version release** [**--workset** <FILE>] [**--dry**] [**--strict**] [**-a** <GA#VER>]...
 ==nmvn== **version check**   [**--workset** <FILE>] [**--fail-on-warning**] [**-j**|**--json**]
@@ -15,8 +15,13 @@ manage multi-project maven worksets and versions
     ```sh -a <GA[#VER]> | -a=<GA[#VER]> | --artifact=<GA[#VER]>```
         specify target artifact and optional version using standard Nuts '#' delimiter (e.g. `com.example:mod1#1.0.0.0`) or '=' delimiter (`com.example:mod1=1.0.0.0`). For bump, omitting version auto-increments using the selected or default policy. Can be specified multiple times.
 
-    ```sh --patch | --minor | --major```
-        increment target artifact(s) or all workspace artifacts by patch, minor, or major.
+    ```sh -p | --patch | -m | --minor | -M | --major```
+        increment explicitly selected target artifacts by patch, minor, or major.
+        Use `--all` to deliberately target every artifact in the workset.
+
+    ```sh --all```
+        explicitly select every workspace artifact for `version bump`. Without this flag,
+        at least one artifact coordinate (or a configured bump instruction) is required.
 
     ```sh --force```
         in bump mode, force advancing an artifact that is already in snapshot mode. This is the standard nuts session option (long form only; `-f` is `--fetch`), handled by the nuts session like `--dry`.
@@ -26,6 +31,7 @@ manage multi-project maven worksets and versions
         - `versions` (or `--cascade-versions`): update references AND bump dependent module versions.
         - `references` (or `--cascade-references-only`, `--no-cascade-versions`): update references in dependent POMs, but leave their project versions untouched.
         - `none` (or `--no-cascade`): touch only the target artifact's POM; leave downstream POMs completely untouched.
+        - Default: `references` (cascade-references-only); dependent project versions are not bumped.
 
     ```sh --dry | -D```
         preview unified diff of changes without modifying files on disk. Default is non-dry (applies changes).
@@ -58,7 +64,8 @@ manage multi-project maven worksets and versions
 
     **4. Synchronized / Lockstep Monorepo Bump**
     Bump all workspace modules together:
-    ```sh nmvn version bump --minor```
+    ```sh nmvn version bump --all --minor --dry```
+    ```sh nmvn version bump --all --minor```
     ```sh nmvn version bump -a com.example:core#2.0.0-SNAPSHOT -a com.example:client#2.0.0-SNAPSHOT```
 
     **5. Upstream Parent or BOM Upgrade**

@@ -10,14 +10,35 @@ It provides two submodules:
 1. **`nmvn-lib`**: An embeddable Java library providing surgical non-destructive POM editing, property-indirection resolution, cycle detection, and automated discrepancy checks. 
 2. **`nmvn`**: A command-line tool built on the Nuts Application Framework (NAF), exposing intuitive `workset` and `version` subcommands.
 
+## Quick start
+
+From a project directory, scan before changing anything:
+
+```bash
+nmvn version scan --root .
+nmvn version check --root .
+```
+
+Preview a bump of one artifact; apply it only after reviewing the diff:
+
+```bash
+nmvn version bump com.example:core -p --root . --dry
+nmvn version bump com.example:core -p --root .
+```
+
+For regular use, save a workset once (`nmvn workset set`) and select it with
+`-w <workset>` instead of repeating `--root`. Bumps require an artifact selector;
+use `--all` only when you really intend to bump every artifact in the workset.
+
 ---
 
 ## Table of Contents
 
 - [The Problems NMvn Solves](#the-problems-nmvn-solves)
+- [Quick start](#quick-start)
 - [Key Concepts](#key-concepts)
   - [Worksets](#1-worksets)
-  - [Non-Destructive XML Surgery](#2-non-destructive-xml-surgery)
+  - [POM editing and boundaries](#2-pom-editing-and-boundaries)
   - [Property-Indirection & BOM Resolution](#3-property-indirection--bom-resolution)
   - [Workspace Discrepancy Auditing](#4-workspace-discrepancy-auditing)
 - [CLI Command Reference](#cli-command-reference)
@@ -52,13 +73,24 @@ A **Workset** is a collection of directory roots (local repositories, submodules
 - **Named Global Worksets**: Managed inside the standard Nuts configuration layout (`~/.nuts/ws/<workspace>/conf/id/net/thevpc/nmvn/nmvn/<name>.tson`). You can switch between worksets anywhere using `--workset <name>`.
 - **Dynamic Roots**: Add and remove root folders dynamically with immediate live scanning (`--scan`).
 
-### 2. Non-Destructive XML Surgery
+### 2. POM editing and boundaries
 
-`nmvn-lib`'s `PomModifier` treats XML surgically:
-- Only the specific `<version>` tag or `<properties><foo.version>` tag is targeted.
-- Retains all original whitespace, indentation, XML declarations, and formatting.
-- **Preserves all comments**, including trailing comments inside tag bodies (e.g. `<dep.version>1.0.0-SNAPSHOT<!-- internal --> </dep.version>`).
-- Provides unified diffs in dry-run mode (`--dry`) before any byte is written to disk.
+The scanner reads POMs into an artifact/dependency model, resolves properties and
+local parent/BOM metadata, then builds a workspace graph. Changes are computed
+in memory and shown as unified diffs before writing. The modifier edits matching
+XML text rather than serializing a DOM, which avoids routine formatting churn.
+
+This is not a full Maven model builder: it does not resolve remote parents or
+BOMs, and POM editing is based on standard, unprefixed Maven element names.
+Malformed or non-project `pom.xml` files are reported as scan warnings.
+Read-only scans and checks continue, but mutating commands refuse an incomplete
+scan so skipped projects cannot conceal references that should be updated.
+Review the warning, fix or exclude the file, then rerun the command.
+`version scan --json` includes both `artifacts` and `warnings`. Apply stages
+replacement and backup files beside each POM, checks for concurrent edits, then
+replaces files and attempts rollback if a replacement fails. This cannot protect
+against process or machine failure mid-apply; keep the worktree under version
+control and review diffs.
 
 ### 3. Property-Indirection & BOM Resolution
 
@@ -175,27 +207,38 @@ nmvn version check --json
 
 #### 3. Bump Versions (`nmvn version bump`)
 
-Use `bump` to **increment** versions using SemVer arithmetic (`--patch`, `--minor`, `--major`). `nmvn` automatically calculates the next version for you.
+Use `bump` to increment a selected artifact using `--patch` (`-p`), `--minor`
+(`-m`), or `--major` (`-M`). Artifact coordinates may be positional or passed
+with `-a`; the target version can be written as `group:artifact#version`,
+`group:artifact=version`, or just `group:artifact` for an increment.
 
-- **Idempotent by default**: If an artifact is already a `-SNAPSHOT` (e.g. `1.2.1-SNAPSHOT`), `bump --patch` leaves it unchanged unless `--force` is specified (the standard nuts session option, long form only).
-- **Release Immutability**: If a consuming module in the workspace is a release (not a snapshot) and its POM is modified because its dependency was bumped, it is **automatically bumped to `next-SNAPSHOT`**. Consuming modules that are already snapshots remain at their current version.
+An incremented release artifact becomes a `-SNAPSHOT`; an existing snapshot is
+left unchanged unless `--force` is specified. By default, NMvn updates references
+to the selected artifact but does **not** bump dependent projects' own versions.
+`--cascade-versions` opts into that broader behavior; when doing an exact
+`update`, it also advances affected release dependents to snapshots.
+An existing workset that explicitly stores `cascade-versions` keeps that
+behavior until its configuration is changed to `cascade-references-only`.
 
 ```bash
-# Auto-increment patch (1.2.0 -> 1.2.1-SNAPSHOT)
-nmvn version bump -a com.example:core --patch
+# Preview one artifact's patch bump; use --dry for no disk changes
+nmvn version bump com.example:core -p --root . --dry
 
-# Auto-increment minor (1.2.0 -> 1.3.0-SNAPSHOT)
-nmvn version bump -a com.example:core --minor
+# Apply after reviewing the preview
+nmvn version bump com.example:core -p --root .
 
-# Force advancing an already-snapshot artifact (1.2.1-SNAPSHOT -> 1.2.2-SNAPSHOT)
-nmvn version bump -a com.example:core --patch --force
+# Explicitly bump every artifact (preview first)
+nmvn version bump --all -p --root . --dry
 
-# Bump all workspace projects by minor in one command
-nmvn version bump --minor
-
-# Bump module and cascade version increments to all dependents
-nmvn version bump -a com.example:core --patch --cascade-versions
+# Also bump dependent project versions
+nmvn version bump com.example:core -p --cascade-versions --root . --dry
 ```
+
+For a shorter repeatable invocation, create a workset and use
+`nmvn version bump com.example:core -p -w backend --dry`. `-r` is shorthand for
+`--root`; `-w` and `--config` are aliases for `--workset`. A bump with neither
+an artifact selector nor `--all` is rejected rather than silently targeting the
+whole workspace.
 
 ---
 
@@ -282,7 +325,7 @@ Workset configurations are stored in **TSON** (Tabular / Typed Structured Object
   bumpPolicy : {
     defaultIncrement : "patch" ,             // patch | minor | major
     snapshotSuffix : "-SNAPSHOT" ,
-    cascadePolicy : "cascade-references-only" // cascade-references-only | cascade-versions
+    cascadePolicy : "cascade-references-only" // safe default; opt into cascade-versions explicitly
   } ,
 
   // Durable version history store tracking commit hashes and timestamps

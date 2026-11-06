@@ -39,6 +39,7 @@ public class MvnVersionSubCommand {
         String configPath = null;
         boolean strict = false;
         boolean failOnWarning = false;
+        boolean allArtifacts = false;
         BumpPolicy.CascadePolicy cascadePolicy = null;
         BumpPolicy.IncrementType increment = null;
         List<String> roots = new ArrayList<>();
@@ -113,7 +114,8 @@ public class MvnVersionSubCommand {
                 case "scan":
                     return doScan(config, workingDir);
                 case "bump":
-                    return doBump(config, workingDir, oo.cliInstructions, oo.increment, oo.cascadePolicy, NSession.of().isForce(), effectiveApply);
+                    return doBump(config, workingDir, oo.cliInstructions, oo.allArtifacts, oo.increment,
+                            oo.cascadePolicy, NSession.of().isForce(), effectiveApply);
                 case "update":
                     return doUpdate(config, workingDir, oo.explicitUpdates, oo.cascadePolicy, effectiveApply);
                 case "release":
@@ -135,12 +137,9 @@ public class MvnVersionSubCommand {
     private void matchScanOptions(NCmdLine cmd, SharedOptions oo) {
         oo.subCommand = "scan";
         cmd.matcher()
-                .when("--workset").asEntry(a -> oo.configPath = a.stringValue())
+                .when("-w", "--workset", "--config").asEntry(a -> oo.configPath = a.stringValue())
                 .when("--strict").asFlag(a -> oo.strict = a.booleanValue())
                 .when("--fail-on-warning").asFlag(a -> oo.failOnWarning = a.booleanValue())
-                .when("--patch").asFlag(a -> oo.increment = BumpPolicy.IncrementType.PATCH)
-                .when("--minor").asFlag(a -> oo.increment = BumpPolicy.IncrementType.MINOR)
-                .when("--major").asFlag(a -> oo.increment = BumpPolicy.IncrementType.MAJOR)
                 .when("-c", "--cascade", "--cascade-policy").asEntry(a -> oo.cascadePolicy = BumpPolicy.CascadePolicy.parse(a.stringValue()))
                 .when("--cascade-versions").asFlag(a -> {
                     if (a.booleanValue()) {
@@ -157,7 +156,7 @@ public class MvnVersionSubCommand {
                         oo.cascadePolicy = BumpPolicy.CascadePolicy.NONE;
                     }
                 })
-                .when("--root").asEntry(a -> oo.roots.add(a.stringValue()))
+                .when("-r", "--root").asEntry(a -> oo.roots.add(a.stringValue()))
                 .when("--exclude").asEntry(a -> oo.excludes.add(a.stringValue()))
                 .when("-a", "--artifact").asEntry(a -> handleArtifactArg(oo.subCommand, a.stringValue(), oo.cliInstructions, oo.explicitUpdates, oo.explicitReleases))
                 .whenNonOption().asArg(a -> handleArtifactArg(oo.subCommand, a.asString().get(), oo.cliInstructions, oo.explicitUpdates, oo.explicitReleases))
@@ -168,12 +167,13 @@ public class MvnVersionSubCommand {
     private void matchBumpOptions(NCmdLine cmd, SharedOptions oo) {
         oo.subCommand = "bump";
         cmd.matcher()
-                .when("--workset").asEntry(a -> oo.configPath = a.stringValue())
+                .when("-w", "--workset", "--config").asEntry(a -> oo.configPath = a.stringValue())
+                .when("-p", "--patch").asFlag(a -> oo.increment = BumpPolicy.IncrementType.PATCH)
+                .when("-m", "--minor").asFlag(a -> oo.increment = BumpPolicy.IncrementType.MINOR)
+                .when("-M", "--major").asFlag(a -> oo.increment = BumpPolicy.IncrementType.MAJOR)
+                .when("--all").asFlag(a -> oo.allArtifacts = a.booleanValue())
                 .when("--strict").asFlag(a -> oo.strict = a.booleanValue())
                 .when("--fail-on-warning").asFlag(a -> oo.failOnWarning = a.booleanValue())
-                .when("--patch").asFlag(a -> oo.increment = BumpPolicy.IncrementType.PATCH)
-                .when("--minor").asFlag(a -> oo.increment = BumpPolicy.IncrementType.MINOR)
-                .when("--major").asFlag(a -> oo.increment = BumpPolicy.IncrementType.MAJOR)
                 .when("-c", "--cascade", "--cascade-policy").asEntry(a -> oo.cascadePolicy = BumpPolicy.CascadePolicy.parse(a.stringValue()))
                 .when("--cascade-versions").asFlag(a -> {
                     if (a.booleanValue()) {
@@ -190,7 +190,7 @@ public class MvnVersionSubCommand {
                         oo.cascadePolicy = BumpPolicy.CascadePolicy.NONE;
                     }
                 })
-                .when("--root").asEntry(a -> oo.roots.add(a.stringValue()))
+                .when("-r", "--root").asEntry(a -> oo.roots.add(a.stringValue()))
                 .when("--exclude").asEntry(a -> oo.excludes.add(a.stringValue()))
                 .when("-a", "--artifact").asEntry(a -> handleArtifactArg(oo.subCommand, a.stringValue(), oo.cliInstructions, oo.explicitUpdates, oo.explicitReleases))
                 .whenNonOption().asArg(a -> handleArtifactArg(oo.subCommand, a.asString().get(), oo.cliInstructions, oo.explicitUpdates, oo.explicitReleases))
@@ -233,12 +233,12 @@ public class MvnVersionSubCommand {
     private void matchUpdateOptions(NCmdLine cmd, SharedOptions oo) {
         oo.subCommand = "update";
         cmd.matcher()
-                .when("--workset").asEntry(a -> oo.configPath = a.stringValue())
+                .when("-w", "--workset", "--config").asEntry(a -> oo.configPath = a.stringValue())
                 .when("--strict").asFlag(a -> oo.strict = a.booleanValue())
                 .when("--fail-on-warning").asFlag(a -> oo.failOnWarning = a.booleanValue())
-                .when("--patch").asFlag(a -> oo.increment = BumpPolicy.IncrementType.PATCH)
-                .when("--minor").asFlag(a -> oo.increment = BumpPolicy.IncrementType.MINOR)
-                .when("--major").asFlag(a -> oo.increment = BumpPolicy.IncrementType.MAJOR)
+                .when("-p", "--patch").asFlag(a -> oo.increment = BumpPolicy.IncrementType.PATCH)
+                .when("-m", "--minor").asFlag(a -> oo.increment = BumpPolicy.IncrementType.MINOR)
+                .when("-M", "--major").asFlag(a -> oo.increment = BumpPolicy.IncrementType.MAJOR)
                 .when("-c", "--cascade", "--cascade-policy").asEntry(a -> oo.cascadePolicy = BumpPolicy.CascadePolicy.parse(a.stringValue()))
                 .when("--cascade-versions").asFlag(a -> {
                     if (a.booleanValue()) {
@@ -255,7 +255,7 @@ public class MvnVersionSubCommand {
                         oo.cascadePolicy = BumpPolicy.CascadePolicy.NONE;
                     }
                 })
-                .when("--root").asEntry(a -> oo.roots.add(a.stringValue()))
+                .when("-r", "--root").asEntry(a -> oo.roots.add(a.stringValue()))
                 .when("--exclude").asEntry(a -> oo.excludes.add(a.stringValue()))
                 .when("-a", "--artifact").asEntry(a -> handleArtifactArg(oo.subCommand, a.stringValue(), oo.cliInstructions, oo.explicitUpdates, oo.explicitReleases))
                 .whenNonOption().asArg(a -> handleArtifactArg(oo.subCommand, a.asString().get(), oo.cliInstructions, oo.explicitUpdates, oo.explicitReleases))
@@ -269,6 +269,12 @@ public class MvnVersionSubCommand {
         MavenDependencyGraph graph = scan.getGraph();
 
         if (!NOut.isPlain()) {
+            NObjectElementBuilder root = NElement.ofObjectBuilder();
+            NArrayElementBuilder warnings = NElement.ofArrayBuilder();
+            for (String warning : scan.getWarnings()) {
+                warnings.add(NElement.ofString(warning));
+            }
+            root.set("warnings", warnings.build());
             NArrayElementBuilder arr = NElement.ofArrayBuilder();
             for (PomArtifact a : artifacts.values()) {
                 NObjectElementBuilder obj = NElement.ofObjectBuilder();
@@ -289,10 +295,12 @@ public class MvnVersionSubCommand {
                 obj.set("references", depsArr.build());
                 arr.add(obj.build());
             }
-            NOut.println(NElementWriter.ofJson().formatPlain(arr.build()));
+            root.set("artifacts", arr.build());
+            NOut.println(NElementWriter.ofJson().formatPlain(root.build()));
             return 0;
         }
 
+        printScanWarnings(scan);
         NOut.println(NMsg.ofStyled(String.format("Discovered %d Maven artifact(s):", artifacts.size()), NTextStyle.primary4()));
         for (PomArtifact a : artifacts.values()) {
             NOut.println(NMsg.ofC("  [bold %s:%s] -> %s", a.getGroupId(), a.getArtifactId(), a.getResolvedVersion()));
@@ -320,18 +328,52 @@ public class MvnVersionSubCommand {
     }
 
     private int doBump(NMvnConfig config, NPath workingDir, List<BumpInstruction> explicitBumps,
+                       boolean allArtifacts,
                        BumpPolicy.IncrementType increment,
                        BumpPolicy.CascadePolicy cascadePolicy, boolean force, boolean apply)  {
-        BumpResult result = versionService.bump(config, workingDir, explicitBumps, increment, cascadePolicy, force, apply);
-        renderChanges(result.getChanges(), apply);
+        if (!allArtifacts && (explicitBumps == null || explicitBumps.isEmpty())
+                && (config.getInstructions() == null || config.getInstructions().isEmpty())) {
+            NOut.println(NMsg.ofStyled(
+                    "No artifacts selected. Specify an artifact or use --all to bump the whole workset.",
+                    NTextStyle.danger()));
+            return 1;
+        }
+        List<BumpInstruction> targets = explicitBumps;
+        if (allArtifacts) {
+            Map<NId, BumpInstruction> all = new LinkedHashMap<>();
+            for (NId ga : versionService.scan(config, workingDir).getArtifacts().keySet()) {
+                all.put(ga, new BumpInstruction(ga.groupId(), ga.artifactId(), null));
+            }
+            if (config.getInstructions() != null) {
+                for (BumpInstruction instruction : config.getInstructions()) {
+                    all.put(instruction.toGa(), instruction);
+                }
+            }
+            if (explicitBumps != null) {
+                for (BumpInstruction instruction : explicitBumps) {
+                    all.put(instruction.toGa(), instruction);
+                }
+            }
+            targets = new ArrayList<>(all.values());
+        }
+        BumpPolicy.CascadePolicy effectiveCascade = cascadePolicy != null
+                ? cascadePolicy : config.getBumpPolicy().getCascadePolicy();
+        printCascadeWarning(effectiveCascade);
+        BumpResult result = versionService.bump(config, workingDir, targets, increment, effectiveCascade, force, apply);
+        renderChanges(result.getChanges(), apply, effectiveCascade);
         return 0;
     }
 
     private int doUpdate(NMvnConfig config, NPath workingDir, Map<NId, String> explicitUpdates,
                          BumpPolicy.CascadePolicy cascadePolicy,
                          boolean apply)  {
-        BumpResult result = versionService.update(config, workingDir, explicitUpdates, cascadePolicy, apply);
-        renderChanges(result.getChanges(), apply);
+        BumpPolicy.CascadePolicy effectiveCascade = cascadePolicy != null
+                ? cascadePolicy : config.getBumpPolicy().getCascadePolicy();
+        if (explicitUpdates != null && !explicitUpdates.isEmpty()) {
+            printCascadeWarning(effectiveCascade);
+        }
+        BumpResult result = versionService.update(config, workingDir, explicitUpdates, effectiveCascade, apply);
+        renderChanges(result.getChanges(), apply, effectiveCascade);
         return 0;
     }
 
@@ -343,11 +385,10 @@ public class MvnVersionSubCommand {
     }
 
     private void renderChanges(List<PomChange> changes, boolean apply) {
-        if (changes.isEmpty()) {
-            NOut.println(NMsg.ofStyled("No changes required. All POMs are up-to-date.", NTextStyle.info()));
-            return;
-        }
+        renderChanges(changes, apply, null);
+    }
 
+    private void renderChanges(List<PomChange> changes, boolean apply, BumpPolicy.CascadePolicy cascadePolicy) {
         if (!NOut.isPlain()) {
             NArrayElementBuilder arr = NElement.ofArrayBuilder();
             for (PomChange c : changes) {
@@ -360,7 +401,19 @@ public class MvnVersionSubCommand {
                 obj.set("diff", diffArr.build());
                 arr.add(obj.build());
             }
-            NOut.println(NElementWriter.ofJson().formatPlain(arr.build()));
+            if (cascadePolicy == null) {
+                NOut.println(NElementWriter.ofJson().formatPlain(arr.build()));
+            } else {
+                NObjectElementBuilder root = NElement.ofObjectBuilder();
+                root.set("cascadePolicy", NElement.ofString(cascadePolicy.name().toLowerCase().replace("_", "-")));
+                root.set("changes", arr.build());
+                NOut.println(NElementWriter.ofJson().formatPlain(root.build()));
+            }
+            return;
+        }
+
+        if (changes.isEmpty()) {
+            NOut.println(NMsg.ofStyled("No changes required. All POMs are up-to-date.", NTextStyle.info()));
             return;
         }
 
@@ -390,12 +443,12 @@ public class MvnVersionSubCommand {
     private void matchReleaseOptions(NCmdLine cmd, SharedOptions oo) {
         oo.subCommand = "release";
         cmd.matcher()
-                .when("--workset").asEntry(a -> oo.configPath = a.stringValue())
+                .when("-w", "--workset", "--config").asEntry(a -> oo.configPath = a.stringValue())
                 .when("--strict").asFlag(a -> oo.strict = a.booleanValue())
                 .when("--fail-on-warning").asFlag(a -> oo.failOnWarning = a.booleanValue())
-                .when("--patch").asFlag(a -> oo.increment = BumpPolicy.IncrementType.PATCH)
-                .when("--minor").asFlag(a -> oo.increment = BumpPolicy.IncrementType.MINOR)
-                .when("--major").asFlag(a -> oo.increment = BumpPolicy.IncrementType.MAJOR)
+                .when("-p", "--patch").asFlag(a -> oo.increment = BumpPolicy.IncrementType.PATCH)
+                .when("-m", "--minor").asFlag(a -> oo.increment = BumpPolicy.IncrementType.MINOR)
+                .when("-M", "--major").asFlag(a -> oo.increment = BumpPolicy.IncrementType.MAJOR)
                 .when("-c", "--cascade", "--cascade-policy").asEntry(a -> oo.cascadePolicy = BumpPolicy.CascadePolicy.parse(a.stringValue()))
                 .when("--cascade-versions").asFlag(a -> {
                     if (a.booleanValue()) {
@@ -412,7 +465,7 @@ public class MvnVersionSubCommand {
                         oo.cascadePolicy = BumpPolicy.CascadePolicy.NONE;
                     }
                 })
-                .when("--root").asEntry(a -> oo.roots.add(a.stringValue()))
+                .when("-r", "--root").asEntry(a -> oo.roots.add(a.stringValue()))
                 .when("--exclude").asEntry(a -> oo.excludes.add(a.stringValue()))
                 .when("-a", "--artifact").asEntry(a -> handleArtifactArg(oo.subCommand, a.stringValue(), oo.cliInstructions, oo.explicitUpdates, oo.explicitReleases))
                 .whenNonOption().asArg(a -> handleArtifactArg(oo.subCommand, a.asString().get(), oo.cliInstructions, oo.explicitUpdates, oo.explicitReleases))
@@ -423,12 +476,12 @@ public class MvnVersionSubCommand {
     private void matchCheckOptions(NCmdLine cmd, SharedOptions oo) {
         oo.subCommand = "check";
         cmd.matcher()
-                .when("--workset").asEntry(a -> oo.configPath = a.stringValue())
+                .when("-w", "--workset", "--config").asEntry(a -> oo.configPath = a.stringValue())
                 .when("--strict").asFlag(a -> oo.strict = a.booleanValue())
                 .when("--fail-on-warning").asFlag(a -> oo.failOnWarning = a.booleanValue())
-                .when("--patch").asFlag(a -> oo.increment = BumpPolicy.IncrementType.PATCH)
-                .when("--minor").asFlag(a -> oo.increment = BumpPolicy.IncrementType.MINOR)
-                .when("--major").asFlag(a -> oo.increment = BumpPolicy.IncrementType.MAJOR)
+                .when("-p", "--patch").asFlag(a -> oo.increment = BumpPolicy.IncrementType.PATCH)
+                .when("-m", "--minor").asFlag(a -> oo.increment = BumpPolicy.IncrementType.MINOR)
+                .when("-M", "--major").asFlag(a -> oo.increment = BumpPolicy.IncrementType.MAJOR)
                 .when("-c", "--cascade", "--cascade-policy").asEntry(a -> oo.cascadePolicy = BumpPolicy.CascadePolicy.parse(a.stringValue()))
                 .when("--cascade-versions").asFlag(a -> {
                     if (a.booleanValue()) {
@@ -445,7 +498,7 @@ public class MvnVersionSubCommand {
                         oo.cascadePolicy = BumpPolicy.CascadePolicy.NONE;
                     }
                 })
-                .when("--root").asEntry(a -> oo.roots.add(a.stringValue()))
+                .when("-r", "--root").asEntry(a -> oo.roots.add(a.stringValue()))
                 .when("--exclude").asEntry(a -> oo.excludes.add(a.stringValue()))
                 .when("-a", "--artifact").asEntry(a -> handleArtifactArg(oo.subCommand, a.stringValue(), oo.cliInstructions, oo.explicitUpdates, oo.explicitReleases))
                 .whenNonOption().asArg(a -> handleArtifactArg(oo.subCommand, a.asString().get(), oo.cliInstructions, oo.explicitUpdates, oo.explicitReleases))
@@ -469,13 +522,19 @@ public class MvnVersionSubCommand {
 
 
     private int doCheck(NMvnConfig config, NPath workingDir, boolean failOnWarning)  {
-        DiagnosticReport report = versionService.check(config, workingDir);
+        ScanResult scan = versionService.scan(config, workingDir, false);
+        DiagnosticReport report = versionService.check(scan, config);
 
         if (!NOut.isPlain()) {
             NObjectElementBuilder rootBuilder = NElement.ofObjectBuilder();
             rootBuilder.set("hasErrors", report.hasErrors());
             rootBuilder.set("hasWarnings", report.hasWarnings());
             rootBuilder.set("issueCount", report.size());
+            NArrayElementBuilder scanWarnings = NElement.ofArrayBuilder();
+            for (String warning : scan.getWarnings()) {
+                scanWarnings.add(NElement.ofString(warning));
+            }
+            rootBuilder.set("scanWarnings", scanWarnings.build());
             NArrayElementBuilder issuesArr = NElement.ofArrayBuilder();
             for (DiagnosticIssue issue : report.getIssues()) {
                 NObjectElementBuilder ib = NElement.ofObjectBuilder();
@@ -499,7 +558,7 @@ public class MvnVersionSubCommand {
             }
             rootBuilder.set("issues", issuesArr.build());
             NOut.println(NElementWriter.ofJson().formatPlain(rootBuilder.build()));
-            if (report.hasErrors()) {
+            if (report.hasErrors() || !scan.getWarnings().isEmpty()) {
                 return 1;
             }
             if (failOnWarning && report.hasWarnings()) {
@@ -507,7 +566,7 @@ public class MvnVersionSubCommand {
             }
             return 0;
         } else {
-            if (report.isEmpty()) {
+            if (report.isEmpty() && scan.getWarnings().isEmpty()) {
                 NOut.println(NMsg.ofStyled("✓ All checks passed! No version discrepancies detected.", NTextStyle.success()));
             } else {
                 for (DiagnosticIssue issue : report.getIssues()) {
@@ -538,7 +597,7 @@ public class MvnVersionSubCommand {
                     NOut.println(NMsg.ofStyled(summary, NTextStyle.warn()));
                 }
             }
-            if (report.hasErrors()) {
+            if (report.hasErrors() || !scan.getWarnings().isEmpty()) {
                 return 1;
             }
             if (failOnWarning && report.hasWarnings()) {
@@ -546,5 +605,24 @@ public class MvnVersionSubCommand {
             }
             return 0;
         }
+    }
+
+    private void printScanWarnings(ScanResult scan) {
+        for (String warning : scan.getWarnings()) {
+            NOut.println(NMsg.ofStyled("Scan warning: " + warning, NTextStyle.warn()));
+        }
+    }
+
+    private void printCascadeWarning(BumpPolicy.CascadePolicy cascadePolicy) {
+        if (!NOut.isPlain()) {
+            return;
+        }
+        String message = cascadePolicy == BumpPolicy.CascadePolicy.CASCADE_VERSIONS
+                ? "Cascade policy: cascade-versions; dependent project versions may also be bumped."
+                : cascadePolicy == BumpPolicy.CascadePolicy.NONE
+                ? "Cascade policy: none; dependent POM references will not be updated."
+                : "Cascade policy: cascade-references-only; dependent project versions will not be bumped.";
+        NOut.println(NMsg.ofStyled(message, cascadePolicy == BumpPolicy.CascadePolicy.CASCADE_VERSIONS
+                ? NTextStyle.warn() : NTextStyle.info()));
     }
 }

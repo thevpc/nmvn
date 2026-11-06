@@ -3,12 +3,16 @@ package net.thevpc.nmvn.lib.service;
 import net.thevpc.nmvn.lib.config.NMvnConfig;
 import net.thevpc.nmvn.lib.config.VersionHistoryStore;
 import net.thevpc.nmvn.lib.diagnostic.ArtifactChecker;
+import net.thevpc.nmvn.lib.diagnostic.DiagnosticIssue;
 import net.thevpc.nmvn.lib.diagnostic.DiagnosticReport;
+import net.thevpc.nmvn.lib.diagnostic.DiagnosticRule;
+import net.thevpc.nmvn.lib.diagnostic.DiagnosticSeverity;
 import net.thevpc.nmvn.lib.exception.StrictSnapshotException;
 import net.thevpc.nmvn.lib.graph.DependencyEdge;
 import net.thevpc.nmvn.lib.graph.MavenDependencyGraph;
 import net.thevpc.nmvn.lib.model.*;
 import net.thevpc.nmvn.lib.modifier.PomModifier;
+import net.thevpc.nmvn.lib.parser.PropertyResolver;
 import net.thevpc.nmvn.lib.scanner.PomScanner;
 import net.thevpc.nuts.artifact.NId;
 import net.thevpc.nuts.io.NPath;
@@ -28,19 +32,39 @@ public class VersionService {
     }
 
     public ScanResult scan(NMvnConfig config, NPath workingDir, boolean detectCycles)  {
-        Map<NId, PomArtifact> artifacts = scanner.scan(config, workingDir);
+        List<String> warnings = new ArrayList<>();
+        Map<NId, PomArtifact> artifacts = scanner.scan(config, workingDir, warnings);
         MavenDependencyGraph graph = new MavenDependencyGraph(artifacts);
         if (detectCycles) {
             graph.detectCycles();
         }
-        return new ScanResult(artifacts, graph);
+        return new ScanResult(artifacts, graph, warnings);
     }
 
     public DiagnosticReport check(NMvnConfig config, NPath workingDir)  {
         ScanResult scanResult = scan(config, workingDir, false);
-        return new ArtifactChecker().check(scanResult, config);
+        return check(scanResult, config);
     }
 
+    public DiagnosticReport check(ScanResult scanResult, NMvnConfig config) {
+        DiagnosticReport report = new ArtifactChecker().check(scanResult, config);
+        if (scanResult.getWarnings().isEmpty()) {
+            return report;
+        }
+        List<DiagnosticIssue> issues = new ArrayList<>(report.getIssues());
+        for (String warning : scanResult.getWarnings()) {
+            issues.add(new DiagnosticIssue(
+                    DiagnosticRule.INCOMPLETE_SCAN,
+                    DiagnosticSeverity.ERROR,
+                    (NId) null, null, warning));
+        }
+        return new DiagnosticReport(issues);
+    }
+
+    /**
+     * Bumps the configured or explicitly selected artifacts. Empty target sets
+     * are rejected so a missing selector cannot silently mean "bump everything".
+     */
     public BumpResult bump(NMvnConfig config, NPath workingDir, List<BumpInstruction> explicitBumps,
                            Boolean cascadeVersionsOverride, boolean apply)  {
         return bump(config, workingDir, explicitBumps, null, cascadeVersionsOverride, false, apply);
@@ -58,6 +82,7 @@ public class VersionService {
                            BumpPolicy.IncrementType incrementOverride,
                            BumpPolicy.CascadePolicy cascadePolicyOverride, boolean force, boolean apply)  {
         ScanResult scanResult = scan(config, workingDir);
+        requireCompleteScan(scanResult);
         Map<NId, PomArtifact> artifacts = scanResult.getArtifacts();
         MavenDependencyGraph graph = scanResult.getGraph();
 
@@ -66,7 +91,7 @@ public class VersionService {
 
         BumpPolicy.IncrementType defaultInc = incrementOverride != null ? incrementOverride : config.getBumpPolicy().getDefaultIncrement();
 
-        // Target artifacts: if explicitBumps is empty or null, target all workspace artifacts
+        // Explicit targets are required; broad workspace bumps should be deliberate.
         Map<NId, BumpInstruction> bumpMap = new LinkedHashMap<>();
         if (config.getInstructions() != null) {
             for (BumpInstruction inst : config.getInstructions()) {
@@ -78,9 +103,8 @@ public class VersionService {
                 bumpMap.put(inst.toGa(), inst);
             }
         } else if (bumpMap.isEmpty()) {
-            for (NId ga : artifacts.keySet()) {
-                bumpMap.put(ga, new BumpInstruction(ga.groupId(), ga.artifactId(), null));
-            }
+            throw new NIllegalArgumentException(NMsg.ofP(
+                    "No bump targets specified. Select artifacts explicitly before bumping."));
         }
 
         Map<NId, String> targetVersions = new LinkedHashMap<>();
@@ -162,6 +186,7 @@ public class VersionService {
                              BumpPolicy.CascadePolicy cascadePolicyOverride,
                              boolean apply)  {
         ScanResult scanResult = scan(config, workingDir);
+        requireCompleteScan(scanResult);
         Map<NId, PomArtifact> artifacts = scanResult.getArtifacts();
         MavenDependencyGraph graph = scanResult.getGraph();
 
@@ -220,6 +245,7 @@ public class VersionService {
     public ReleaseResult release(NMvnConfig config, NPath workingDir, Map<NId, String> explicitReleases,
                                  boolean strict, boolean apply)  {
         ScanResult scanResult = scan(config, workingDir);
+        requireCompleteScan(scanResult);
         Map<NId, PomArtifact> artifacts = scanResult.getArtifacts();
 
         Map<NId, String> targetVersions = new LinkedHashMap<>();
@@ -286,11 +312,17 @@ public class VersionService {
 
             if (artifact.isVersionPropertyIndirected()) {
                 String propName = artifact.getVersionPropertyName();
-                NPath definingPom = artifact.getPath(); // or parent if defined in parent
-                String defContent = contentByPath.get(definingPom);
-                if (defContent != null) {
-                    contentByPath.put(definingPom, PomModifier.updateProperty(defContent, propName, newVer));
+                NPath definingPom = PropertyResolver.findDefiningPomForProperty(propName, artifact, artifacts);
+                if (definingPom == null) {
+                    throw new IllegalArgumentException("Cannot locate defining POM for project version property "
+                            + propName + " in " + artifact.getPath());
                 }
+                String defContent = contentByPath.get(definingPom);
+                if (defContent == null) {
+                    throw new IllegalArgumentException("Refusing to edit project version property outside the scanned workspace: "
+                            + definingPom);
+                }
+                contentByPath.put(definingPom, PomModifier.updateProperty(defContent, propName, newVer));
             } else if (artifact.getRawVersion() != null) {
                 contentByPath.put(pomPath, PomModifier.updateProjectVersion(content, newVer));
             }
@@ -316,6 +348,9 @@ public class VersionService {
             // Check dependencies, dependencyManagement, plugins
             List<PomDependency> allRefs = artifact.getAllReferences();
             for (PomDependency ref : allRefs) {
+                if (ref.getEdgeType() == DependencyEdgeType.PARENT) {
+                    continue;
+                }
                 NId refGa = ref.toGa();
                 if (targetVersions.containsKey(refGa)) {
                     String newVer = targetVersions.get(refGa);
@@ -329,6 +364,9 @@ public class VersionService {
                                 String defContent = contentByPath.get(definingPom);
                                 contentByPath.put(definingPom, PomModifier.updateProperty(defContent, propName, newVer));
                             }
+                        } else if (ref.getRawVersion() != null) {
+                            throw new IllegalArgumentException("Cannot safely update property " + propName
+                                    + " for " + ref.toGa() + ": defining POM is outside the scanned workspace");
                         }
                     } else {
                         // Literal version reference
@@ -358,10 +396,81 @@ public class VersionService {
     }
 
     private void applyChangesToDisk(List<PomChange> changes)  {
-        for (PomChange c : changes) {
-            if (c.hasChanges()) {
-                c.getPomFile().writeString(c.getNewContent());
+        Map<java.nio.file.Path, java.nio.file.Path> staged = new LinkedHashMap<>();
+        Map<java.nio.file.Path, java.nio.file.Path> backups = new LinkedHashMap<>();
+        List<java.nio.file.Path> committed = new ArrayList<>();
+        try {
+            for (PomChange change : changes) {
+                if (!change.hasChanges()) {
+                    continue;
+                }
+                java.nio.file.Path target = change.getPomFile().toPath().get();
+                if (java.nio.file.Files.isSymbolicLink(target)) {
+                    throw new IOException("Refusing to replace a symbolic-link POM: " + target);
+                }
+                String actual = change.getPomFile().readString();
+                if (!change.getOriginalContent().equals(actual)) {
+                    throw new IOException("POM changed after planning; refusing to overwrite: " + target);
+                }
+                java.nio.file.Path parent = target.getParent();
+                java.nio.file.Path replacement = java.nio.file.Files.createTempFile(parent, ".nmvn-", ".new");
+                staged.put(target, replacement);
+                java.nio.file.Path backup = java.nio.file.Files.createTempFile(parent, ".nmvn-", ".bak");
+                backups.put(target, backup);
+                java.nio.file.Files.write(replacement, change.getNewContent().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                java.nio.file.Files.copy(target, backup, java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                        java.nio.file.StandardCopyOption.COPY_ATTRIBUTES);
+                try {
+                    java.nio.file.Files.setPosixFilePermissions(replacement,
+                            java.nio.file.Files.getPosixFilePermissions(target));
+                } catch (UnsupportedOperationException ignored) {
+                    // Non-POSIX filesystems do not expose permission bits.
+                }
             }
+            for (PomChange change : changes) {
+                if (change.hasChanges() && !change.getOriginalContent().equals(change.getPomFile().readString())) {
+                    throw new IOException("POM changed while preparing updates; refusing to overwrite: "
+                            + change.getPomFile());
+                }
+            }
+            for (Map.Entry<java.nio.file.Path, java.nio.file.Path> entry : staged.entrySet()) {
+                moveReplacing(entry.getValue(), entry.getKey());
+                committed.add(entry.getKey());
+            }
+        } catch (Exception failure) {
+            for (int i = committed.size() - 1; i >= 0; i--) {
+                java.nio.file.Path target = committed.get(i);
+                try {
+                    moveReplacing(backups.get(target), target);
+                } catch (Exception rollbackFailure) {
+                    failure.addSuppressed(rollbackFailure);
+                }
+            }
+            throw net.thevpc.nuts.util.NException.ofUncheckedException(failure);
+        } finally {
+            for (java.nio.file.Path path : staged.values()) {
+                try { java.nio.file.Files.deleteIfExists(path); } catch (IOException ignored) { }
+            }
+            for (java.nio.file.Path path : backups.values()) {
+                try { java.nio.file.Files.deleteIfExists(path); } catch (IOException ignored) { }
+            }
+        }
+    }
+
+    private void moveReplacing(java.nio.file.Path source, java.nio.file.Path target) throws IOException {
+        try {
+            java.nio.file.Files.move(source, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                    java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+        } catch (java.nio.file.AtomicMoveNotSupportedException e) {
+            java.nio.file.Files.move(source, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+
+    private void requireCompleteScan(ScanResult scanResult) {
+        if (!scanResult.getWarnings().isEmpty()) {
+            throw new NIllegalArgumentException(NMsg.ofC(
+                    "Refusing to modify versions from an incomplete scan: %s",
+                    String.join("; ", scanResult.getWarnings())));
         }
     }
 

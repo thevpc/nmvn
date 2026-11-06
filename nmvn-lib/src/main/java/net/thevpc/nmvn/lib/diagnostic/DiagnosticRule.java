@@ -46,5 +46,8 @@ public enum DiagnosticRule {
     /**
      * Cyclic dependencies detected between workspace modules.
      */
-    CIRCULAR_DEPENDENCY
+    CIRCULAR_DEPENDENCY,
+
+    /** A POM or configured root was skipped, so workspace results are incomplete. */
+    INCOMPLETE_SCAN
 }

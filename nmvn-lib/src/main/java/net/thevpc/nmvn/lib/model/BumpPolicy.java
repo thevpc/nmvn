@@ -42,13 +42,14 @@ public class BumpPolicy {
             if ("cascade-references-only".equals(clean) || "references-only".equals(clean) || "references".equals(clean) || "refs".equals(clean)) {
                 return CASCADE_REFERENCES_ONLY;
             }
-            return CASCADE_REFERENCES_ONLY;
+            throw new IllegalArgumentException("Unknown cascade policy: " + str
+                    + " (expected cascade-references-only, cascade-versions, or none)");
         }
     }
 
     private IncrementType defaultIncrement = IncrementType.MINOR;
     private String snapshotSuffix = "-SNAPSHOT";
-    private CascadePolicy cascadePolicy = CascadePolicy.CASCADE_VERSIONS;
+    private CascadePolicy cascadePolicy = CascadePolicy.CASCADE_REFERENCES_ONLY;
 
     public BumpPolicy() {
     }

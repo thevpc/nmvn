@@ -120,7 +120,7 @@ public class NMvnClasspathCompatibilityTest {
                             if (trimmed.endsWith(".jar")) {
                                 String jarName = new File(trimmed).getName();
                                 // Exclude the application jar itself
-                                if (!jarName.startsWith("nmvn-1.0.0.0.jar")) {
+                                if (!jarName.startsWith("nmvn-")) {
                                     nutsJars.add(jarName);
                                 }
                             }
@@ -153,7 +153,7 @@ public class NMvnClasspathCompatibilityTest {
         net.thevpc.nuts.core.NWorkspace ws = Nuts.require();
         NSession session = ws.createSession();
         List<NId> resolved = session.callWith(() ->
-                NSearch.of("net.thevpc.nmvn:nmvn#1.0.0.0")
+                NSearch.of("net.thevpc.nmvn:nmvn#1.1.0.0")
                         .transitive(true)
                         .inlineDependencies(true)
                         .dependencyFilter(NDependencyFilter.ofRunnable())
@@ -167,7 +167,7 @@ public class NMvnClasspathCompatibilityTest {
 
         Assert.assertEquals("3.6.3", versions.get("maven-model"));
         Assert.assertEquals("3.6.3", versions.get("maven-core"));
-        Assert.assertEquals("2.5", versions.get("commons-io"));
+        Assert.assertEquals("2.6", versions.get("commons-io"));
         Assert.assertFalse(versions.containsKey("junit"));
         Assert.assertFalse(versions.containsKey("plexus-container-default"));
     }

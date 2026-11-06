@@ -21,6 +21,15 @@ public class PomScanner {
     private final PomParser pomParser = new PomParser();
 
     public Map<NId, PomArtifact> scan(NMvnConfig config, NPath workingDir)  {
+        List<String> warnings = new ArrayList<>();
+        Map<NId, PomArtifact> artifacts = scan(config, workingDir, warnings);
+        if (!warnings.isEmpty()) {
+            throw new IllegalStateException("Incomplete Maven scan: " + String.join("; ", warnings));
+        }
+        return artifacts;
+    }
+
+    public Map<NId, PomArtifact> scan(NMvnConfig config, NPath workingDir, List<String> warnings)  {
         List<String> roots = config.getRoots();
         if (roots == null || roots.isEmpty()) {
             roots = Collections.singletonList(".");
@@ -31,6 +40,7 @@ public class PomScanner {
         for (String rootStr : roots) {
             NPath rootNPath = workingDir.resolve(rootStr).normalize().toAbsolute();
             if (!rootNPath.exists()) {
+                warnings.add("Configured scan root does not exist: " + rootNPath);
                 continue;
             }
             Path rootPath = rootNPath.toPath().get();
@@ -80,7 +90,7 @@ public class PomScanner {
                                     List<PomArtifact> list = collectedByGa.computeIfAbsent(ga, k -> new ArrayList<>());
                                     list.add(artifact);
                                 } catch (Exception e) {
-                                    // Ignore non-maven or malformed helper poms unless critical
+                                    warnings.add("Skipped POM " + file + ": " + e.getMessage());
                                 }
                             }
                         }
