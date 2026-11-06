@@ -487,6 +487,51 @@ public class NMvnLibTest {
     }
 
     @Test
+    public void testPomEditsValidateXmlAndRejectUnsupportedNamespaces() {
+        String malformed = "<project><version>1</project>";
+        try {
+            PomModifier.updateProjectVersion(malformed, "2");
+            Assert.fail("Malformed XML must not be edited");
+        } catch (IllegalArgumentException expected) {
+            Assert.assertTrue(expected.getMessage().contains("Invalid or unsupported POM XML"));
+        }
+
+        String foreignNamespace = "<project xmlns=\"http://maven.apache.org/POM/4.0.0\">"
+                + "<version xmlns=\"urn:foreign\">1</version></project>";
+        try {
+            PomModifier.updateProjectVersion(foreignNamespace, "2");
+            Assert.fail("A foreign-namespace version must not be edited");
+        } catch (IllegalArgumentException expected) {
+            Assert.assertTrue(expected.getMessage().contains("Unsupported namespace"));
+        }
+
+        String mavenNamespace = "<project xmlns=\"http://maven.apache.org/POM/4.0.0\">"
+                + "<version>1</version></project>";
+        Assert.assertEquals(mavenNamespace.replace(">1<", ">2<"),
+                PomModifier.updateProjectVersion(mavenNamespace, "2"));
+    }
+
+    @Test
+    public void testPomEditsPreservePropertyIndirection() {
+        String projectVersion = "<project><version>${revision}</version></project>";
+        try {
+            PomModifier.updateProjectVersion(projectVersion, "2");
+            Assert.fail("A property-indirected version must not be replaced directly");
+        } catch (IllegalArgumentException expected) {
+            Assert.assertTrue(expected.getMessage().contains("property-indirected"));
+        }
+
+        String propertyAlias = "<project><properties><revision>${base.revision}</revision>"
+                + "</properties></project>";
+        try {
+            PomModifier.updateProperty(propertyAlias, "revision", "2");
+            Assert.fail("A property alias must not be flattened during an update");
+        } catch (IllegalArgumentException expected) {
+            Assert.assertTrue(expected.getMessage().contains("property alias"));
+        }
+    }
+
+    @Test
     public void testExclusionFilteringBuildAndTargetDirs() throws Exception {
         NPath root = NPath.of(tempFolder.newFolder("exclude-test"));
         NPath srcDir = root.resolve("module-a");

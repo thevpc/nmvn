@@ -82,7 +82,12 @@ XML text rather than serializing a DOM, which avoids routine formatting churn.
 
 This is not a full Maven model builder: it does not resolve remote parents or
 BOMs, and POM editing is based on standard, unprefixed Maven element names.
-Malformed or non-project `pom.xml` files are reported as scan warnings.
+Before editing, NMvn validates XML structure and the Maven POM namespace. It
+refuses prefixed or foreign-namespace Maven elements, malformed XML, and direct
+replacement of property-indirected versions or property aliases. Concrete
+declared properties can be updated; for alias chains, update the terminal
+property explicitly rather than flattening the alias. Malformed or non-project
+`pom.xml` files are reported as scan warnings.
 Read-only scans and checks continue, but mutating commands refuse an incomplete
 scan so skipped projects cannot conceal references that should be updated.
 Review the warning, fix or exclude the file, then rerun the command.

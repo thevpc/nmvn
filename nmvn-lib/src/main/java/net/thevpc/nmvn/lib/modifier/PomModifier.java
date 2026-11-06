@@ -2,13 +2,29 @@ package net.thevpc.nmvn.lib.modifier;
 
 import net.thevpc.nmvn.lib.model.PomChange;
 import net.thevpc.nuts.io.NPath;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.NodeList;
 
+import javax.xml.XMLConstants;
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.xml.sax.InputSource;
+import org.xml.sax.SAXException;
+import org.xml.sax.SAXParseException;
+import org.xml.sax.helpers.DefaultHandler;
 
 public class PomModifier {
+    private static final String MAVEN_POM_NAMESPACE = "http://maven.apache.org/POM/4.0.0";
+    private static final Pattern PROPERTY_REFERENCE = Pattern.compile("\\$\\{[^}]+}");
+    private static final String[] MAVEN_ELEMENTS = {
+            "project", "parent", "properties", "version", "dependency", "plugin", "groupId", "artifactId"
+    };
     private static final Pattern XML_TAGS = Pattern.compile(
             "(?s)<!--.*?-->|<!\\[CDATA\\[.*?\\]\\]>|<\\?.*?\\?>|<!DOCTYPE\\b.*?>"
                     + "|<(/?)([A-Za-z_][A-Za-z0-9_.:-]*)(?:\\s[^<>]*?)?(/?)>");
@@ -75,21 +91,28 @@ public class PomModifier {
     }
 
     public static String updateProperty(String content, String propertyName, String newVersion) {
+        validateXmlForEditing(content, propertyName);
         TagRange project = uniqueRoot(content, "project");
         TagRange properties = uniqueChild(content, project, "properties", "properties section");
         TagRange property = uniqueChild(content, properties, propertyName, "property " + propertyName);
+        if (PROPERTY_REFERENCE.matcher(content.substring(property.bodyStart, property.bodyEnd)).find()) {
+            throw new IllegalArgumentException("Refusing to replace property alias " + propertyName
+                    + "; update its defining property instead");
+        }
         return replaceBody(content, property, newVersion);
     }
 
     public static String updateProjectVersion(String content, String newVersion) {
+        validateXmlForEditing(content);
         TagRange project = uniqueRoot(content, "project");
-        return replaceBody(content, uniqueChild(content, project, "version", "project version"), newVersion);
+        return replaceLiteralVersion(content, uniqueChild(content, project, "version", "project version"), newVersion);
     }
 
     public static String updateParentVersion(String content, String newVersion) {
+        validateXmlForEditing(content);
         TagRange project = uniqueRoot(content, "project");
         TagRange parent = uniqueChild(content, project, "parent", "parent section");
-        return replaceBody(content, uniqueChild(content, parent, "version", "parent version"), newVersion);
+        return replaceLiteralVersion(content, uniqueChild(content, parent, "version", "parent version"), newVersion);
     }
 
     public static String updateDependencyVersion(String content, String groupId, String artifactId, String newVersion) {
@@ -102,6 +125,7 @@ public class PomModifier {
 
     private static String updateCoordinateBlocks(String content, String elementName, String groupId,
                                                  String artifactId, String newVersion) {
+        validateXmlForEditing(content);
         List<TagRange> projects = findElements(content, 0, content.length(), "project");
         if (projects.size() != 1) {
             throw new IllegalArgumentException("Expected one <project> element while updating " + elementName);
@@ -130,9 +154,7 @@ public class PomModifier {
                 if (content.substring(version.start, version.end).trim().endsWith("/>")) {
                     throw new IllegalArgumentException("Cannot update a self-closing <version> in " + elementName);
                 }
-                updated = updated.substring(0, version.bodyStart)
-                        + replaceVersionInsideTag(content.substring(version.bodyStart, version.bodyEnd), newVersion)
-                        + updated.substring(version.bodyEnd);
+                updated = replaceLiteralVersion(updated, version, newVersion);
             }
         }
         if (!matches.isEmpty() && versionCount == 0) {
@@ -177,6 +199,82 @@ public class PomModifier {
         String body = content.substring(tag.bodyStart, tag.bodyEnd);
         return content.substring(0, tag.bodyStart) + replaceVersionInsideTag(body, newVersion)
                 + content.substring(tag.bodyEnd);
+    }
+
+    private static String replaceLiteralVersion(String content, TagRange tag, String newVersion) {
+        String body = content.substring(tag.bodyStart, tag.bodyEnd)
+                .replaceAll("(?s)<!--.*?-->", "").trim();
+        if (body.contains("${")) {
+            throw new IllegalArgumentException("Refusing to replace a property-indirected version; update its property instead");
+        }
+        return replaceBody(content, tag, newVersion);
+    }
+
+    private static void validateXmlForEditing(String content) {
+        validateXmlForEditing(content, null);
+    }
+
+    private static void validateXmlForEditing(String content, String additionalMavenElement) {
+        try {
+            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+            factory.setNamespaceAware(true);
+            factory.setXIncludeAware(false);
+            factory.setExpandEntityReferences(false);
+            factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
+            factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+            factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
+            factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+            factory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
+            DocumentBuilder builder = factory.newDocumentBuilder();
+            builder.setErrorHandler(new DefaultHandler() {
+                @Override
+                public void error(SAXParseException e) throws SAXException {
+                    throw e;
+                }
+
+                @Override
+                public void fatalError(SAXParseException e) throws SAXException {
+                    throw e;
+                }
+            });
+            Document doc = builder.parse(new InputSource(new StringReader(content)));
+            Element root = doc.getDocumentElement();
+            String rootNamespace = root.getNamespaceURI() == null ? "" : root.getNamespaceURI();
+            if (!"project".equals(root.getLocalName())
+                    || root.getPrefix() != null
+                    || (!rootNamespace.isEmpty() && !MAVEN_POM_NAMESPACE.equals(rootNamespace))) {
+                throw new IllegalArgumentException("Unsupported Maven POM root element or namespace");
+            }
+            NodeList elements = doc.getElementsByTagName("*");
+            for (int i = 0; i < elements.getLength(); i++) {
+                Element element = (Element) elements.item(i);
+                String localName = element.getLocalName();
+                if ((isMavenElement(localName) || (additionalMavenElement != null
+                        && additionalMavenElement.equals(localName)))
+                        && (element.getPrefix() != null
+                        || !rootNamespace.equals(element.getNamespaceURI() == null ? "" : element.getNamespaceURI()))) {
+                    throw new IllegalArgumentException("Unsupported namespace on <" + localName
+                            + ">; refusing text-based POM edit");
+                }
+            }
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Invalid or unsupported POM XML; refusing text-based edit", e);
+        }
+    }
+
+    private static boolean isMavenElement(String localName) {
+        if (localName == null) {
+            return false;
+        }
+
+        for (String name : MAVEN_ELEMENTS) {
+            if (name.equals(localName)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static List<TagRange> findElements(String content, int start, int end, String wantedName) {
