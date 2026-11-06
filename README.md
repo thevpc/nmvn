@@ -30,12 +30,132 @@ For regular use, save a workset once (`nmvn workset set`) and select it with
 `-w <workset>` instead of repeating `--root`. Bumps require an artifact selector;
 use `--all` only when you really intend to bump every artifact in the workset.
 
+## Workflow recipes
+
+The examples below use `backend` as a named workset and illustrative Maven
+coordinates. Replace the roots and coordinates with your own.
+
+### Manage several repositories together
+
+Create a reusable workset from multiple checkout directories, excluding build
+outputs and generated trees:
+
+```bash
+nmvn workset set backend \
+  --root ../service-api \
+  --root ../service-core \
+  --root ../service-jobs \
+  --exclude "**/target/**" \
+  --exclude "**/generated/**" \
+  --default-increment patch \
+  --cascade-policy cascade-references-only
+
+nmvn workset scan backend
+nmvn version scan --workset backend
+nmvn version check --workset backend
+```
+
+Add another checkout later without recreating the workset:
+
+```bash
+nmvn workset add-root ../service-ui --workset backend --scan
+nmvn workset root list backend
+```
+
+### Align an external dependency without bumping project versions
+
+Use `check` to find version drift, then preview and apply one exact alignment.
+This changes matching dependency references; the default cascade does not
+change dependent projects' own versions.
+
+```bash
+nmvn version check --workset backend
+nmvn version update com.fasterxml.jackson.core:jackson-databind#2.17.2 \
+  --workset backend --dry
+nmvn version update com.fasterxml.jackson.core:jackson-databind#2.17.2 \
+  --workset backend
+```
+
+### Change a module version and choose how far to cascade
+
+For a normal library patch bump, preview first. NMvn updates references to the
+library but leaves consumers' project versions unchanged. Use
+`--cascade-versions` only when those consumer versions should advance too.
+
+```bash
+nmvn version bump com.acme:shared-lib -p --workset backend --dry
+nmvn version bump com.acme:shared-lib -p --workset backend
+
+# Broader coordinated change: also advance dependent project versions
+nmvn version bump com.acme:shared-lib -p --cascade-versions \
+  --workset backend --dry
+```
+
+To leave all downstream POMs untouched and edit only the selected artifact,
+use `--cascade=none`. To bump several independent artifacts in one operation,
+repeat the selector:
+
+```bash
+# Change only the selected artifact POM; do not update downstream references
+nmvn version bump com.acme:shared-lib -p --cascade=none \
+  --workset backend --dry
+
+# Bump multiple selected artifacts
+nmvn version bump \
+  -a com.acme:shared-lib \
+  -a com.acme:service-api \
+  --minor --workset backend --dry
+```
+
+An artifact already on a snapshot version is not advanced again by default.
+Use `--force` when an additional snapshot bump is intentional:
+
+```bash
+nmvn version bump com.acme:shared-lib -p --force --workset backend --dry
+```
+
+### Update a shared parent or BOM
+
+An exact update is useful when upgrading a parent POM or imported BOM. Preview
+the update to inspect all affected references before applying:
+
+```bash
+nmvn version update com.acme:company-parent#5.2.0 \
+  --workset backend --dry
+nmvn version update com.acme:company-parent#5.2.0 --workset backend
+```
+
+### Release only selected modules, or the whole workset
+
+Preview before removing snapshot suffixes. Omit selectors to release all
+eligible workspace artifacts; provide selectors to limit the release:
+
+```bash
+nmvn version release --workset backend --dry
+nmvn version release -a com.acme:shared-lib#2.4.0 \
+  -a com.acme:service-api#2.4.0 --workset backend --dry
+
+# Refuse the release if unmanaged external snapshot dependencies remain
+nmvn version release --strict --workset backend --dry
+```
+
+### Run a CI audit
+
+Use JSON for machine-readable diagnostics and make warnings fail the job when
+that policy is desired:
+
+```bash
+nmvn version check --workset backend --json
+nmvn version check --workset backend --fail-on-warning --json
+```
+
 ---
 
 ## Table of Contents
 
 - [The Problems NMvn Solves](#the-problems-nmvn-solves)
 - [Quick start](#quick-start)
+- [Workflow recipes](#workflow-recipes)
 - [Key Concepts](#key-concepts)
   - [Worksets](#1-worksets)
   - [POM editing and boundaries](#2-pom-editing-and-boundaries)
@@ -348,7 +468,7 @@ Add `nmvn-lib` to your `pom.xml`:
 <dependency>
     <groupId>net.thevpc.nmvn</groupId>
     <artifactId>nmvn-lib</artifactId>
-    <version>1.0.0.0</version>
+    <version>1.1.0.0</version>
 </dependency>
 ```
 
@@ -408,7 +528,8 @@ mvn clean test
 mvn clean package
 ```
 
-All 24 unit and CLI integration tests run automatically against temporary fixtures using native `NPath` operations.
+The unit and CLI integration tests run against temporary fixtures using native
+`NPath` operations.
 
 ---
 
