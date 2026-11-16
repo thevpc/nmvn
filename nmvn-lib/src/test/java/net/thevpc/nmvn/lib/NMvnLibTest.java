@@ -339,6 +339,81 @@ public class NMvnLibTest {
     }
 
     @Test
+    public void testUnifiedDiffOnlyShowsChangedLines() {
+        String original = "a\nb\n<version>1-SNAPSHOT</version>\nc\nd\ne\nf\n<version>2-SNAPSHOT</version>\ng\n";
+        String revised = "a\nb\n<version>1</version>\nc\nd\ne\nf\n<version>2</version>\ng\n";
+        List<String> diff = PomChange.computeSimpleUnifiedDiff("pom.xml", original, revised);
+        Assert.assertEquals(Arrays.asList(
+                "--- a/pom.xml",
+                "+++ b/pom.xml",
+                "@@ -2,3 +2,3 @@",
+                " b",
+                "-<version>1-SNAPSHOT</version>",
+                "+<version>1</version>",
+                " c",
+                "@@ -7,3 +7,3 @@",
+                " f",
+                "-<version>2-SNAPSHOT</version>",
+                "+<version>2</version>",
+                " g"
+        ), diff);
+    }
+
+    @Test
+    public void testReleaseWithModuleInheritingParentVersion() throws Exception {
+        NPath root = NPath.of(tempFolder.newFolder("inherited-release-test"));
+        NPath parentPom = createPom(root,
+                "<project>\n" +
+                "  <modelVersion>4.0.0</modelVersion>\n" +
+                "  <groupId>com.app</groupId>\n" +
+                "  <artifactId>parent</artifactId>\n" +
+                "  <version>6.1.0-SNAPSHOT</version>\n" +
+                "  <packaging>pom</packaging>\n" +
+                "</project>");
+        NPath childPom = createPom(root.resolve("child"),
+                "<project>\n" +
+                "  <modelVersion>4.0.0</modelVersion>\n" +
+                "  <parent>\n" +
+                "    <groupId>com.app</groupId>\n" +
+                "    <artifactId>parent</artifactId>\n" +
+                "    <version>6.1.0-SNAPSHOT</version>\n" +
+                "  </parent>\n" +
+                "  <artifactId>child</artifactId>\n" +
+                "</project>");
+        NPath siblingPom = createPom(root.resolve("sibling"),
+                "<project>\n" +
+                "  <modelVersion>4.0.0</modelVersion>\n" +
+                "  <parent>\n" +
+                "    <groupId>com.app</groupId>\n" +
+                "    <artifactId>parent</artifactId>\n" +
+                "    <version>6.1.0-SNAPSHOT</version>\n" +
+                "  </parent>\n" +
+                "  <artifactId>sibling</artifactId>\n" +
+                "  <dependencies>\n" +
+                "    <dependency>\n" +
+                "      <groupId>com.app</groupId>\n" +
+                "      <artifactId>child</artifactId>\n" +
+                "      <version>${project.version}</version>\n" +
+                "    </dependency>\n" +
+                "  </dependencies>\n" +
+                "</project>");
+
+        NMvnConfig config = new NMvnConfig();
+        config.setRoots(Collections.singletonList(root.toString()));
+
+        service.release(config, root, null, false, true);
+
+        Assert.assertTrue(parentPom.readString().contains("<version>6.1.0</version>"));
+        String child = childPom.readString();
+        Assert.assertTrue(child.contains("<version>6.1.0</version>"));
+        Assert.assertFalse(child.contains("SNAPSHOT"));
+        Assert.assertEquals(1, child.split("<version>", -1).length - 1);
+        String sibling = siblingPom.readString();
+        Assert.assertTrue(sibling.contains("<version>6.1.0</version>"));
+        Assert.assertTrue(sibling.contains("<version>${project.version}</version>"));
+    }
+
+    @Test
     public void testDryRunDoesNotModifyFiles() throws Exception {
         NPath root = NPath.of(tempFolder.newFolder("dryrun-test"));
         NPath aDir = root.resolve("a");

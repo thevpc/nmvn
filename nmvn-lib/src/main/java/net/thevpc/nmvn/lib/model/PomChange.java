@@ -57,42 +57,109 @@ public class PomChange {
         if (original.equals(revised)) {
             return Collections.emptyList();
         }
-        List<String> origLines = Arrays.asList(original.split("\\r?\\n", -1));
-        List<String> revLines = Arrays.asList(revised.split("\\r?\\n", -1));
+        String[] a = original.split("\\r?\\n", -1);
+        String[] b = revised.split("\\r?\\n", -1);
+
+        // edit script over the region between the common prefix and suffix (LCS)
+        int pre = 0;
+        while (pre < a.length && pre < b.length && a[pre].equals(b[pre])) {
+            pre++;
+        }
+        int suf = 0;
+        while (suf < a.length - pre && suf < b.length - pre
+                && a[a.length - 1 - suf].equals(b[b.length - 1 - suf])) {
+            suf++;
+        }
+        int n = a.length - pre - suf;
+        int m = b.length - pre - suf;
+        int[][] lcs = new int[n + 1][m + 1];
+        for (int i = n - 1; i >= 0; i--) {
+            for (int j = m - 1; j >= 0; j--) {
+                lcs[i][j] = a[pre + i].equals(b[pre + j])
+                        ? lcs[i + 1][j + 1] + 1
+                        : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
+            }
+        }
+        // ops: ' ' kept, '-' removed, '+' added ; aIdx/bIdx are the 0-based line positions before the op
+        StringBuilder ops = new StringBuilder();
+        List<int[]> pos = new ArrayList<>();
+        List<String> texts = new ArrayList<>();
+        for (int k = 0; k < pre; k++) {
+            ops.append(' ');
+            pos.add(new int[]{k, k});
+            texts.add(a[k]);
+        }
+        int i = 0, j = 0;
+        while (i < n || j < m) {
+            if (i < n && j < m && a[pre + i].equals(b[pre + j])) {
+                ops.append(' ');
+                pos.add(new int[]{pre + i, pre + j});
+                texts.add(a[pre + i]);
+                i++;
+                j++;
+            } else if (i < n && (j >= m || lcs[i + 1][j] >= lcs[i][j + 1])) {
+                ops.append('-');
+                pos.add(new int[]{pre + i, pre + j});
+                texts.add(a[pre + i]);
+                i++;
+            } else {
+                ops.append('+');
+                pos.add(new int[]{pre + i, pre + j});
+                texts.add(b[pre + j]);
+                j++;
+            }
+        }
+        for (int k = 0; k < suf; k++) {
+            ops.append(' ');
+            pos.add(new int[]{a.length - suf + k, b.length - suf + k});
+            texts.add(a[a.length - suf + k]);
+        }
+
         List<String> diff = new ArrayList<>();
         diff.add("--- a/" + filename);
         diff.add("+++ b/" + filename);
-
-        int max = Math.max(origLines.size(), revLines.size());
-        int i = 0, j = 0;
-        while (i < origLines.size() || j < revLines.size()) {
-            if (i < origLines.size() && j < revLines.size() && origLines.get(i).equals(revLines.get(j))) {
-                i++;
-                j++;
-            } else {
-                int startI = Math.max(0, i - 1);
-                int endI = Math.min(origLines.size(), i + 2);
-                int startJ = Math.max(0, j - 1);
-                int endJ = Math.min(revLines.size(), j + 2);
-
-                diff.add(String.format("@@ -%d,%d +%d,%d @@", (startI + 1), (endI - startI), (startJ + 1), (endJ - startJ)));
-                if (startI < i && startI < origLines.size()) {
-                    diff.add(" " + origLines.get(startI));
+        int context = 1;
+        int k = 0;
+        while (k < ops.length()) {
+            if (ops.charAt(k) == ' ') {
+                k++;
+                continue;
+            }
+            int hunkStart = Math.max(0, k - context);
+            int hunkEnd = k;
+            // extend the hunk while changes are within 2*context kept lines of each other
+            while (hunkEnd < ops.length()) {
+                if (ops.charAt(hunkEnd) != ' ') {
+                    hunkEnd++;
+                    continue;
                 }
-                while (i < origLines.size() && (j >= revLines.size() || !origLines.get(i).equals(revLines.get(j)))) {
-                    diff.add("-" + origLines.get(i));
-                    i++;
+                int next = hunkEnd;
+                while (next < ops.length() && ops.charAt(next) == ' ') {
+                    next++;
                 }
-                while (j < revLines.size() && (i >= origLines.size() || !revLines.get(j).equals(origLines.get(i)))) {
-                    diff.add("+" + revLines.get(j));
-                    j++;
-                }
-                if (i < origLines.size()) {
-                    diff.add(" " + origLines.get(i));
-                    i++;
-                    j++;
+                if (next < ops.length() && next - hunkEnd <= 2 * context) {
+                    hunkEnd = next;
+                } else {
+                    hunkEnd = Math.min(ops.length(), hunkEnd + context);
+                    break;
                 }
             }
+            int aCount = 0, bCount = 0;
+            for (int x = hunkStart; x < hunkEnd; x++) {
+                char op = ops.charAt(x);
+                if (op != '+') {
+                    aCount++;
+                }
+                if (op != '-') {
+                    bCount++;
+                }
+            }
+            diff.add(String.format("@@ -%d,%d +%d,%d @@",
+                    pos.get(hunkStart)[0] + 1, aCount, pos.get(hunkStart)[1] + 1, bCount));
+            for (int x = hunkStart; x < hunkEnd; x++) {
+                diff.add(ops.charAt(x) + texts.get(x));
+            }
+            k = hunkEnd;
         }
         return diff;
     }

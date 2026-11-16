@@ -323,6 +323,14 @@ public class VersionService {
                             + definingPom);
                 }
                 contentByPath.put(definingPom, PomModifier.updateProperty(defContent, propName, newVer));
+            } else if (artifact.isVersionInherited()) {
+                // no own <version>: it follows the parent, whose reference is updated below
+                NId parentGa = artifact.getParentId().shortId();
+                if (!newVer.equals(targetVersions.get(parentGa))) {
+                    throw new IllegalArgumentException("Cannot set " + ga + " to " + newVer
+                            + ": it inherits its version from parent " + parentGa + " (" + pomPath
+                            + "); change the parent version instead");
+                }
             } else if (artifact.getRawVersion() != null) {
                 contentByPath.put(pomPath, PomModifier.updateProjectVersion(content, newVer));
             }
@@ -355,7 +363,9 @@ public class VersionService {
                 if (targetVersions.containsKey(refGa)) {
                     String newVer = targetVersions.get(refGa);
 
-                    if (ref.isPropertyIndirected()) {
+                    if (ref.isPropertyIndirected() && isBuiltinVersionProperty(ref.getVersionPropertyName())) {
+                        // ${project.version} and friends follow the project/parent version, nothing to edit
+                    } else if (ref.isPropertyIndirected()) {
                         String propName = ref.getVersionPropertyName();
                         NPath definingPom = ref.getPropertyDefiningPom();
                         if (definingPom != null && contentByPath.containsKey(definingPom)) {
@@ -464,6 +474,18 @@ public class VersionService {
         } catch (java.nio.file.AtomicMoveNotSupportedException e) {
             java.nio.file.Files.move(source, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
         }
+    }
+
+    private static boolean isBuiltinVersionProperty(String propName) {
+        switch (propName) {
+            case "project.version":
+            case "pom.version":
+            case "version":
+            case "project.parent.version":
+            case "parent.version":
+                return true;
+        }
+        return false;
     }
 
     private void requireCompleteScan(ScanResult scanResult) {

@@ -18,6 +18,7 @@ public class PomArtifact {
     private final List<String> modules = new ArrayList<>();
     private String versionPropertyName;
     private boolean hasUnresolvedParentOrBom;
+    private boolean versionInherited;
 
     public boolean hasUnresolvedParentOrBom() {
         return hasUnresolvedParentOrBom;
@@ -108,6 +109,17 @@ public class PomArtifact {
 
     public List<String> getModules() {
         return modules;
+    }
+
+    /**
+     * true when the POM declares no own {@code <version>} and the version is taken from {@code <parent>}
+     */
+    public boolean isVersionInherited() {
+        return versionInherited;
+    }
+
+    public void setVersionInherited(boolean versionInherited) {
+        this.versionInherited = versionInherited;
     }
 
     public boolean isVersionPropertyIndirected() {

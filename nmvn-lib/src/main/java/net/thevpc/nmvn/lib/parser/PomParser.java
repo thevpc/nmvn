@@ -67,8 +67,10 @@ public class PomParser {
         }
         String artifactId = getChildText(projectElem, "artifactId");
         String version = getChildText(projectElem, "version");
+        boolean versionInherited = false;
         if (version == null && parentCoord != null && !parentCoord.version().isBlank()) {
             version = parentCoord.version().value();
+            versionInherited = true;
         }
 
         if (groupId == null || artifactId == null) {
@@ -79,6 +81,7 @@ public class PomParser {
                 ? NId.of(groupId, artifactId)
                 : NId.of(groupId, artifactId, version.trim());
         PomArtifact artifact = new PomArtifact(coord, parentCoord, pomPath);
+        artifact.setVersionInherited(versionInherited);
 
         // Parse properties
         Element propertiesElem = getDirectChild(projectElem, "properties");
