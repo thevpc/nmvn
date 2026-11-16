@@ -311,7 +311,7 @@ public class MvnWorksetSubCommand {
             String stored;
             if (!folderPath.isAbsolute() || folderPath.toString().startsWith(workingDir.toString())) {
                 try {
-                    stored = workingDir.relativize(folderPath).toString();
+                    stored = workingDir.relativize(folderPath).orElse(folderStr);
                     if (stored.isEmpty()) {
                         stored = ".";
                     }

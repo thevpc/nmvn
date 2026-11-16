@@ -2,15 +2,30 @@
 ==nmvn== **\<command-options\>**
 manage multi-project maven worksets and versions
 
-==nmvn== [**--version** <MVN_VERSION>] [{{args...}}]
-==nmvn== **workset** [**list**|**path**|**get**|**set**|**add-root**|**remove-root**|**scan**|**edit**] [{{options...}}]
-==nmvn== **version scan**    [**--workset** <FILE>] [**-j**|**--json**]
-==nmvn== **version bump**    [**--workset** <FILE>] [**--dry**] [**--patch**|**--minor**|**--major**] [**--all**] [**--force**] [**--cascade**=<versions|references|none>] [**-a** <GA[#VER]>]...
-==nmvn== **version update**  [**--workset** <FILE>] [**--dry**] [**--cascade**=<versions|references|none>] [**-a** <GA#VER>]...
-==nmvn== **version release** [**--workset** <FILE>] [**--dry**] [**--strict**] [**-a** <GA#VER>]...
-==nmvn== **version check**   [**--workset** <FILE>] [**--fail-on-warning**] [**-j**|**--json**]
+==nmvn== [**build**] {{maven-args...}}
+==nmvn== **workset** [**list**|**path**|**get**|**set**|**add-root**|**remove-root**|**root**|**scan**|**edit**] [{{options...}}]
+==nmvn== **version scan**    [{{scan-options}}] [**-j**|**--json**]
+==nmvn== **version bump**    [{{scan-options}}] [**--dry**] [**--patch**|**--minor**|**--major**] [**--all**] [**--force**] [**--cascade**=<versions|references|none>] [**-a**] <GA[#VER]>...
+==nmvn== **version update**  [{{scan-options}}] [**--dry**] [**--cascade**=<versions|references|none>] [**-a**] <GA#VER>...
+==nmvn== **version release** [{{scan-options}}] [**--dry**] [**--strict**] [**-a** <GA#VER>]...
+==nmvn== **version check**   [{{scan-options}}] [**--fail-on-warning**] [**-j**|**--json**]
+==nmvn== **clean**           [**--simple**] [**--workset** <NAME|FILE>] [**--root** <DIR>]... [**--exclude** <GLOB>]... [**--no-ignore**]
+==nmvn== **get**             <G:A:V> [<REPO>]
+==nmvn== **diff-jar**        [**-r** <REPO_URL>]... <JAR1> <JAR2>
+
+    {{scan-options}}: [**-w**|**--workset** <NAME|FILE>] [**-r**|**--root** <DIR>]... [**--exclude** <GLOB>]... [**--no-ignore**]
 
 ##) OPTIONS:
+
+    ```sh -w <NAME|FILE> | --workset <NAME|FILE> | --config <NAME|FILE>```
+        workset to use. Without it: ./workset.tson, ./nmvn.tson, ./.nmvn/config.tson,
+        then the global workset.tson/nmvn.tson; with none of them the current directory is scanned.
+
+    ```sh -r <DIR> | --root <DIR>```
+        scan this directory instead of the workset roots. Can be specified multiple times.
+
+    ```sh --exclude <GLOB>```
+        skip matching paths (e.g. `**/generated/**`). Can be specified multiple times.
 
     ```sh --no-ignore```
         disable implicit generated-directory and `.gitignore` filtering for scan-based commands.
@@ -31,7 +46,7 @@ manage multi-project maven worksets and versions
         in bump mode, force advancing an artifact that is already in snapshot mode. This is the standard nuts session option (long form only; `-f` is `--fetch`), handled by the nuts session like `--dry`.
 
     ```sh -c=<mode> | --cascade=<mode>```
-        control downstream cascading behavior (`versions`, `references`, or `none`).
+        control downstream cascading behavior (`versions`, `references`, or `none`). Use the `=` form.
         - `versions` (or `--cascade-versions`): update references AND bump dependent module versions.
         - `references` (or `--cascade-references-only`, `--no-cascade-versions`): update references in dependent POMs, but leave their project versions untouched.
         - `none` (or `--no-cascade`): touch only the target artifact's POM; leave downstream POMs completely untouched.
@@ -42,6 +57,10 @@ manage multi-project maven worksets and versions
 
     ```sh --strict```
         in release mode, fail if any unmanaged external snapshot dependency is detected.
+
+    In release mode, `-a <GA#VER>` only overrides the release version of that artifact:
+    every -SNAPSHOT artifact in the scanned roots is still released. Narrow the scan with
+    `--root`/`--exclude` to release a subset.
 
     ```sh -j | --json```
         output machine-readable JSON for CI/CD pipelines.
@@ -80,12 +99,19 @@ manage multi-project maven worksets and versions
     Strip -SNAPSHOT from all workspace artifacts and convert references to release:
     ```sh nmvn version release --dry```
     ```sh nmvn version release --strict```
+    Release everything, but pick explicit versions for some artifacts:
     ```sh nmvn version release -a com.example:core#1.0.0 -a com.example:client#1.0.0```
 
 ##) EXAMPLES:
 
-```sh nmvn clean install```
-   maven clean install
+```sh nmvn install -DskipTests```
+   run maven install with the embedded maven
+
+```sh nmvn build clean install```
+   maven clean install (`build` is needed because `clean` alone is nmvn's own command)
+
+```sh nmvn clean --simple```
+   delete the target/ folder of every scanned project
 
 ```sh nmvn workset add-root ../other-project --scan```
    add a root folder to current workset and scan discovered artifacts

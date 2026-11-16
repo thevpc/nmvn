@@ -621,4 +621,26 @@ public class NMvnCliTest {
         Assert.assertEquals(0, previewAll);
         Assert.assertTrue(mod1.resolve("pom.xml").readString().contains("<version>1.0.0</version>"));
     }
+
+    @Test
+    public void testWorksetAddRootInsideWorkingDirStoresRelativePath() {
+        NPath workingDir = NPath.ofUserDirectory();
+        NPath mod = workingDir.resolve("target").resolve("add-root-rel-" + System.nanoTime()).resolve("mod");
+        createPom(mod,
+                "<project>\n" +
+                "  <modelVersion>4.0.0</modelVersion>\n" +
+                "  <groupId>com.cli</groupId>\n" +
+                "  <artifactId>rel</artifactId>\n" +
+                "  <version>1.0.0</version>\n" +
+                "</project>");
+        NPath wsFile = mod.parent().resolve("workset.tson");
+
+        int code = new MvnWorksetSubCommand().run(new String[]{
+                "add-root", "--workset", wsFile.toString(), mod.toString()
+        });
+        Assert.assertEquals(0, code);
+        String content = wsFile.readString();
+        Assert.assertFalse(content, content.contains("Optional"));
+        Assert.assertTrue(content, content.contains("target/" + mod.parent().name() + "/mod"));
+    }
 }
