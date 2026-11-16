@@ -2,13 +2,34 @@
 
 [![License: LGPL v3](https://img.shields.io/badge/License-LGPL_v3-blue.svg)](LICENSE)
 [![Java: 1.8+](https://img.shields.io/badge/Java-1.8+-orange.svg)](https://openjdk.org/)
-[![Nuts Package Manager](https://img.shields.io/badge/Nuts-0.8.4+-green.svg)](https://github.com/thevpc/nuts)
+[![Nuts Package Manager](https://img.shields.io/badge/Nuts-1.1+-green.svg)](https://github.com/thevpc/nuts)
 
 **NMvn** is an advanced developer tool and Java library for orchestrating multi-project Maven versioning, dependency graph analysis, discrepancy auditing, and cross-repository **Worksets**.
 
 It provides two submodules:
 1. **`nmvn-lib`**: An embeddable Java library providing surgical non-destructive POM editing, property-indirection resolution, cycle detection, and automated discrepancy checks. 
 2. **`nmvn`**: A command-line tool built on the Nuts Application Framework (NAF), exposing intuitive `workset` and `version` subcommands.
+
+> **In a hurry?** See the [command cheat sheet](CHEATSHEET.md) for the most
+> common commands and when to use each one.
+
+## Installing and running
+
+NMvn is a [Nuts](https://github.com/thevpc/nuts) application
+(`net.thevpc.nmvn:nmvn`). Run it through Nuts:
+
+```bash
+nuts nmvn version scan          # installed nuts
+nuts-dev -y nmvn version scan   # nuts development workspace (uses ~/.m2)
+```
+
+`nuts-dev` may ask to re-install the Nuts runtime on each call; `-y` answers
+yes so the command also works non-interactively. The examples below write
+`nmvn ...` for short.
+
+Nuts session options work anywhere on the command line: `--dry` (or `-D`)
+previews without writing, `-y` auto-confirms, `--json` switches output to JSON,
+and `--force` is the bump force flag.
 
 ## Quick start
 
@@ -29,6 +50,29 @@ nmvn version bump com.example:core -p --root .
 For regular use, save a workset once (`nmvn workset set`) and select it with
 `-w <workset>` instead of repeating `--root`. Bumps require an artifact selector;
 use `--all` only when you really intend to bump every artifact in the workset.
+
+## How NMvn finds your projects
+
+Every `version`, `clean` and `workset scan` command first works out **which
+roots to scan**, then walks them for `pom.xml` files.
+
+1. **Workset file.** With `-w`/`--workset <name|file>`, that workset is used: a
+   bare name is looked up as `<name>` or `<name>.tson` in the current
+   directory, then in the Nuts config folder (`nmvn workset path <name>` prints
+   where). Without `-w`, the first existing file wins:
+   `./workset.tson`, `./nmvn.tson`, `./.nmvn/config.tson`, then the global
+   `workset.tson` / `nmvn.tson` in the Nuts config folder.
+2. **Roots.** `--root`/`-r` on the command line replaces the workset's roots.
+   With no workset and no `--root`, the root is the **current directory**, so
+   running from the top of a multi-module checkout just works.
+3. **Filtering.** `target`, `build`, `dist`, `node_modules`, VCS and IDE
+   folders and anything matched by `.gitignore` are skipped (see
+   [POM editing and boundaries](#2-pom-editing-and-boundaries)).
+
+If a command touches the wrong projects, or none, run `nmvn version scan`
+from the same directory with the same options: it lists exactly what was found.
+A global `workset.tson` in the Nuts config folder applies everywhere, which
+can make NMvn ignore your current directory; check with `nmvn workset path`.
 
 ## Workflow recipes
 
@@ -58,7 +102,7 @@ Add another checkout later without recreating the workset:
 
 ```bash
 nmvn workset add-root ../service-ui --workset backend --scan
-nmvn workset root list backend
+nmvn workset root list --workset backend
 ```
 
 ### Align an external dependency without bumping project versions
@@ -124,19 +168,35 @@ nmvn version update com.acme:company-parent#5.2.0 \
 nmvn version update com.acme:company-parent#5.2.0 --workset backend
 ```
 
-### Release only selected modules, or the whole workset
+### Release the workset
 
-Preview before removing snapshot suffixes. Omit selectors to release all
-eligible workspace artifacts; provide selectors to limit the release:
+`release` turns every `-SNAPSHOT` artifact in the scanned roots into its
+release version (`6.1.0-SNAPSHOT` → `6.1.0`) and updates every internal
+reference to those artifacts. Preview first:
 
 ```bash
 nmvn version release --workset backend --dry
-nmvn version release -a com.acme:shared-lib#2.4.0 \
-  -a com.acme:service-api#2.4.0 --workset backend --dry
+nmvn version release --workset backend
+
+# Choose the release version of some artifacts instead of just dropping -SNAPSHOT
+nmvn version release -a com.acme:shared-lib#2.4.0 --workset backend --dry
 
 # Refuse the release if unmanaged external snapshot dependencies remain
 nmvn version release --strict --workset backend --dry
 ```
+
+`-a` does **not** restrict the release: all snapshots in the scanned roots are
+still released, and `-a` only overrides the target version of the listed
+artifacts. To release a subset, narrow the scan instead (`--root`,
+`--exclude`, or a dedicated workset).
+
+Modules that inherit their version from `<parent>` are released through the
+parent reference, and `${project.version}` dependencies are left as they are.
+Internal references pinned to an older version (for example `6.0.0`) are also
+realigned to the released version.
+
+After a release, start the next development cycle with a bump, for example
+`nmvn version bump com.acme:parent -m --cascade-versions --dry`.
 
 ### Run a CI audit
 
@@ -148,12 +208,29 @@ nmvn version check --workset backend --json
 nmvn version check --workset backend --fail-on-warning --json
 ```
 
+When launched through Nuts, the process exit code is currently `0` even when
+`check` reports errors (see [Known limitations](#known-limitations)). Until
+that is fixed, have CI read `hasErrors` / `hasWarnings` from the JSON output.
+
+### Run Maven itself
+
+Anything that is not an NMvn command is passed to an embedded Maven (3.6.x),
+so NMvn can stand in for `mvn`:
+
+```bash
+nmvn install -DskipTests
+nmvn build clean install      # `clean` alone is NMvn's own clean command
+nmvn get com.google.guava:guava:33.0.0-jre   # download an artifact to ~/.m2
+```
+
 ---
 
 ## Table of Contents
 
 - [The Problems NMvn Solves](#the-problems-nmvn-solves)
+- [Installing and running](#installing-and-running)
 - [Quick start](#quick-start)
+- [How NMvn finds your projects](#how-nmvn-finds-your-projects)
 - [Workflow recipes](#workflow-recipes)
 - [Key Concepts](#key-concepts)
   - [Worksets](#1-worksets)
@@ -164,9 +241,12 @@ nmvn version check --workset backend --fail-on-warning --json
   - [Workset Management (`nmvn workset`)](#workset-management-nmvn-workset)
   - [Version Management (`nmvn version`)](#version-management-nmvn-version)
   - [Project Cleaning (`nmvn clean`)](#project-cleaning-nmvn-clean)
+  - [Maven Pass-Through and Utilities](#maven-pass-through-and-utilities)
 - [Workset Configuration Format (`workset.tson`)](#workset-configuration-format-worksettson)
+- [Version History File](#version-history-file)
 - [Using `nmvn-lib` as a Java Library](#using-nmvn-lib-as-a-java-library)
 - [Building & Testing](#building--testing)
+- [Known limitations](#known-limitations)
 - [License](#license)
 
 ---
@@ -189,7 +269,7 @@ When developing large software suites split across dozens of Maven repositories 
 A **Workset** is a collection of directory roots (local repositories, submodules, or parent directories) grouped together for synchronized analysis, version bumping, and release management.
 
 - **Local Worksets**: Defined by a `workset.tson` (or `nmvn.tson`) in the project directory.
-- **Named Global Worksets**: Managed inside the standard Nuts configuration layout (`~/.nuts/ws/<workspace>/conf/id/net/thevpc/nmvn/nmvn/<name>.tson`). You can switch between worksets anywhere using `--workset <name>`.
+- **Named Global Worksets**: Stored as `<name>.tson` in NMvn's Nuts configuration folder (on Linux typically `~/.config/nuts/ws/<workspace>/id/net/thevpc/nmvn/nmvn/`; `nmvn workset list` prints the exact folder). Select one from any directory with `--workset <name>` (or `-w <name>`).
 - **Dynamic Roots**: Add and remove root folders dynamically with immediate live scanning (`--scan`).
 
 ### 2. POM editing and boundaries
@@ -249,7 +329,16 @@ The `nmvn version check` command audits the workset against built-in rules:
 
 ### Workset Management (`nmvn workset`)
 
-Aliases: `nmvn ws`, `nmvn config`
+Aliases: `nmvn ws`, `nmvn config`. With no sub-command, `nmvn workset` lists
+the named worksets. Sub-command aliases: `list`/`ls`, `get`/`cat`/`view`,
+`add-root`/`add`/`add-folder`, `remove-root`/`rm-root`/`remove`/`rm`.
+
+`list`, `path`, `get`, `set`, `scan` and `edit` accept the workset as their
+first positional argument; `add-root`, `remove-root` and `root ...` treat
+positional arguments as folders, so name the workset with `--workset <name>`
+(or `--name <name>`). Without one, they use the local
+`workset.tson` (or `nmvn.tson`) in the current directory, creating
+`workset.tson` when saving.
 
 #### 1. Add Folders / Roots to a Workset
 ```bash
@@ -302,8 +391,10 @@ nmvn workset path [workset-name]
 nmvn workset get [workset-name]
 nmvn workset get [workset-name] --json
 
-# Set workset defaults
+# Create or update a workset (roots replace the stored list; excludes are appended)
+nmvn workset set [workset-name] --root ../a --root ../b --exclude "**/generated/**"
 nmvn workset set [workset-name] --default-increment patch --snapshot-suffix -SNAPSHOT
+nmvn workset set [workset-name] --cascade-policy cascade-references-only --history-file .nmvn/history.tson
 
 # Open workset in $EDITOR or $VISUAL
 nmvn workset edit [workset-name]
@@ -315,6 +406,11 @@ nmvn workset scan [workset-name]
 ---
 
 ### Version Management (`nmvn version`)
+
+All `version` sub-commands accept `-w`/`--workset`/`--config <name|file>`,
+`-r`/`--root <dir>` (repeatable, replaces the workset roots), `--exclude <glob>`
+(repeatable) and `--no-ignore`. Sub-command aliases: `update`/`set`,
+`release`/`fix-snapshots`, `check`/`validate`.
 
 #### 1. Scan Dependency Graph
 ```bash
@@ -330,7 +426,7 @@ nmvn version scan --no-ignore
 
 #### 2. Audit Workspace for Discrepancies (`check`)
 ```bash
-# Run all diagnostic checks (returns exit code 1 if errors are found)
+# Run all diagnostic checks (reports failure if errors are found)
 nmvn version check
 
 # Fail on warnings as well as errors
@@ -347,8 +443,10 @@ Use `bump` to increment a selected artifact using `--patch` (`-p`), `--minor`
 with `-a`; the target version can be written as `group:artifact#version`,
 `group:artifact=version`, or just `group:artifact` for an increment.
 
-An incremented release artifact becomes a `-SNAPSHOT`; an existing snapshot is
-left unchanged unless `--force` is specified. By default, NMvn updates references
+Without `-p`/`-m`/`-M`, the workset's `defaultIncrement` is used (`minor` unless
+configured). An incremented release artifact becomes a `-SNAPSHOT`
+(`2.0.0` → `2.0.1-SNAPSHOT` with `-p`); an existing snapshot is left unchanged
+unless `--force` is specified. By default, NMvn updates references
 to the selected artifact but does **not** bump dependent projects' own versions.
 `--cascade-versions` opts into that broader behavior; when doing an exact
 `update`, it also advances affected release dependents to snapshots.
@@ -368,6 +466,10 @@ nmvn version bump --all -p --root . --dry
 # Also bump dependent project versions
 nmvn version bump com.example:core -p --cascade-versions --root . --dry
 ```
+
+Cascade modes are `versions`, `references` (default) and `none`; pass them as
+`--cascade=<mode>` or `-c=<mode>` (with `=`), or use the flags
+`--cascade-versions`, `--cascade-references-only` and `--no-cascade`.
 
 For a shorter repeatable invocation, create a workset and use
 `nmvn version bump com.example:core -p -w backend --dry`. `-r` is shorthand for
@@ -399,18 +501,21 @@ nmvn version update -a com.example:company-parent#5.0.0
 
 #### 5. Release Artifacts (`nmvn version release`)
 
-Convert `-SNAPSHOT` artifacts to clean release versions and update all workspace references:
+Convert every `-SNAPSHOT` artifact in the scanned roots to its release version
+and update all workspace references (alias: `fix-snapshots`). Artifacts that are
+already releases are left alone, so a workspace with no snapshots reports
+"No changes required".
 ```bash
 # Preview release diffs
 nmvn version release --dry
 
-# Automatically strip -SNAPSHOT from all workspace projects and convert references
+# Strip -SNAPSHOT from all workspace projects and convert references
 nmvn version release
 
 # Strict mode: fails if any unmanaged external snapshot dependency is detected
 nmvn version release --strict
 
-# Release specific artifacts with explicit target versions
+# Override the release version of some artifacts (all snapshots are still released)
 nmvn version release -a com.example:core-lib#1.0.0 -a com.example:client-lib#1.0.0
 ```
 
@@ -420,6 +525,12 @@ nmvn version release -a com.example:core-lib#1.0.0 -a com.example:client-lib#1.0
 
 Cleans all Maven projects discovered by the workset scanner (same roots and
 excludes as `nmvn version scan`), so `target/` copies of poms are skipped.
+
+Options: `-s`/`--simple`, `--workset <name>` (no `-w` short form here),
+`-r`/`--root <dir>` or positional directories, `--exclude <glob>`, `--no-ignore`.
+Positional arguments are **roots**, not Maven goals: `nmvn clean install`
+fails with "Root does not exist: install". Use `nmvn build clean install` for
+Maven's clean + install.
 
 ```bash
 # Run `mvn clean` in every scanned project dir
@@ -434,6 +545,27 @@ nmvn clean --root ../service-core --exclude "**/skipme/**"
 
 # Include ignored/generated projects in the scan (use with care)
 nmvn clean --no-ignore
+```
+
+---
+
+### Maven Pass-Through and Utilities
+
+```bash
+# Any non-NMvn first argument is handed to the embedded Maven
+nmvn install -DskipTests
+nmvn package -Pprod
+
+# `build` forces Maven, needed when the goal collides with an NMvn command
+nmvn build clean install
+
+# Download an artifact (and its dependencies) into ~/.m2; optional repository
+nmvn get com.example:lib:1.2.3
+nmvn get com.example:lib:1.2.3 vpc-public-maven
+
+# Compare two jars, ignoring META-INF; each side is a path, URL or g:a:v
+nmvn diff-jar target/old.jar target/new.jar
+nmvn diff-jar com.example:lib:1.2.3 com.example:lib:1.2.4 -r https://repo.example.com/maven
 ```
 
 ---
@@ -471,6 +603,14 @@ Workset configurations are stored in **TSON** (Tabular / Typed Structured Object
   historyFile : ".nmvn/version-history.tson"
 }
 ```
+
+## Version History File
+
+Every applied `bump`, `update` or `release` (not `--dry`) appends the new
+versions, current Git commit and timestamp to `historyFile`, by default
+`.nmvn/version-history.tson` **relative to the current directory**. Commit it
+if you want a record of version changes, or add `.nmvn/` to `.gitignore`.
+Change the location with `nmvn workset set --history-file <path>`.
 
 ---
 
@@ -544,6 +684,31 @@ mvn clean package
 
 The unit and CLI integration tests run against temporary fixtures using native
 `NPath` operations.
+
+To try a local build through Nuts, install it to `~/.m2` and make the Nuts
+development workspace pick up the new jar (it otherwise keeps running the
+previously installed copy of `nmvn`):
+
+```bash
+mvn install -DskipTests
+nuts-dev -y install --reinstall net.thevpc.nmvn:nmvn
+```
+
+---
+
+## Known limitations
+
+- **Exit codes under Nuts:** when launched with `nuts`/`nuts-dev`, failed
+  commands (including `version check` with errors) still exit with code `0`;
+  the failure is only reported in the output. Use `--json` and inspect
+  `hasErrors` in scripts.
+- **Release selection:** `release -a` overrides versions but does not limit
+  which snapshots are released (see [Release the workset](#release-the-workset)).
+- **Remote parents and BOMs** are not resolved; only POMs inside the scanned
+  roots are understood and edited.
+- **Children that only inherit a version** cannot be versioned independently
+  of their parent; change the parent version instead.
+- `version compare` is a placeholder and does nothing yet.
 
 ---
 
