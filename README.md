@@ -45,7 +45,8 @@ It has two parts:
 | Bump a library and then hunt every consumer's dependency, parent, plugin and BOM-import reference. | Builds a workspace graph and updates only the references that actually point at the changed artifact. |
 | Decide whether consumers' *own versions* should move too. | Makes that an explicit policy: `none`, `cascade-references-only` (default) or `cascade-versions`. |
 | Release a suite: strip every `-SNAPSHOT`, realign internal references, keep inherited modules consistent. | `version release` does the whole set, optionally refusing external snapshots. |
-| Notice mixed release/snapshot modules, version drift, parent mismatches and cycles. | `version check` applies ten diagnostic rules with file/line context and JSON output. |
+| Notice mixed release/snapshot modules, version drift, parent mismatches and cycles. | `version check` applies ten version rules (plus Git `target/` hygiene checks) with file/line context and JSON output. |
+| Build output was committed because `target/` was never ignored. | `clean --gitignore` audits every scanned repository, untracks `target/` and appends the ignore rule. |
 | Edit dozens of POMs without reformatting them or losing comments. | Edits matching XML text, preserves layout and comments, and shows a unified diff first. |
 | Trust a mass edit after it is applied. | `--dry` previews; apply stages files, checks for concurrent edits, keeps backups and attempts rollback. |
 | Repeat the same multi-repo setup in every shell and every CI job. | A named **workset** stores roots and policy once; `-w <name>` reuses it anywhere. |
@@ -408,10 +409,24 @@ nmvn clean --root /work/service-core --exclude "**/skipme/**"
 
 # Include projects normally hidden by .gitignore/default ignores (use with care).
 nmvn clean --no-ignore
+
+# Check that every scanned project's target/ is ignored by Git. --dry only reports.
+nmvn clean --gitignore --dry
+
+# Fix it: add target/ to each repository's .gitignore and remove tracked target
+# files from the Git index. Working-tree files are kept.
+nmvn clean --gitignore
 ```
 
 Positional arguments to `clean` are **roots**, not Maven goals. `nmvn clean install`
 fails with `Root does not exist: install`; use `nmvn build clean install`.
+
+`clean --gitignore` is a Git-hygiene mode: it does not run Maven and does not delete
+`target/`. Combined with `--dry` it only reports. When several scanned projects share a
+Git repository, the `target/` rule is added to that repository's root `.gitignore`
+once. Tracked target files are removed with `git rm -r --cached`, so they disappear
+from the repository but remain on disk; run `nmvn clean --simple` afterwards if you
+also want to delete the build output.
 
 ### 8. Use Maven itself through the same command
 
@@ -550,6 +565,10 @@ nmvn version scan --json
 nmvn version scan --no-ignore
 ```
 
+`scan` also reports Git hygiene problems for each discovered project: a `target/`
+directory that is not ignored, or target files that are still tracked. The JSON form
+includes them in `targetIgnoreIssues`. Fix them with `nmvn clean --gitignore`.
+
 #### `check`
 
 ```bash
@@ -577,6 +596,8 @@ Rules and default severities:
 | `MISSING_VERSION` | warning | A direct dependency has no version and is not managed locally. |
 | `CIRCULAR_DEPENDENCY` | error | Direct or indirect cycle between workspace modules. |
 | `INCOMPLETE_SCAN` | error | A POM or ignore file could not be read; the graph may be incomplete. |
+| `TARGET_NOT_IGNORED` | warning | A scanned project's `target/` directory is not excluded by Git. |
+| `TARGET_TRACKED` | warning | Files under `target/` are still tracked, so the ignore rule has no effect on them. |
 
 #### `bump`
 
@@ -651,10 +672,27 @@ nmvn clean --root ../service-core --exclude "**/skipme/**"
 
 # Include ignored/generated projects in the scan.
 nmvn clean --no-ignore
+
+# Check Git hygiene for target/: preview first, then apply.
+nmvn clean --gitignore --dry
+nmvn clean --gitignore
 ```
 
-Options: `-s` / `--simple`, `--workset <name>` (no `-w` short form),
-`-r` / `--root <dir>` or positional roots, `--exclude <glob>`, `--no-ignore`.
+Options: `-s` / `--simple`, `--gitignore` (alias `--fix-gitignore`),
+`--workset <name>` (no `-w` short form), `-r` / `--root <dir>` or positional
+roots, `--exclude <glob>`, `--no-ignore`.
+
+`--gitignore` scans the same projects as the other `clean` modes, then for every
+project inside a Git repository:
+
+1. checks whether `target/` is excluded (using `git check-ignore`);
+2. if not, appends `target/` to that repository's root `.gitignore`;
+3. removes tracked target files from the index with
+   `git rm -r --cached --ignore-unmatch`.
+
+It never deletes working-tree files and does not invoke Maven. `--dry` performs the
+same checks and prints the plan without changing `.gitignore` or the Git index.
+Projects outside Git repositories are skipped.
 
 ### Maven pass-through and utilities
 

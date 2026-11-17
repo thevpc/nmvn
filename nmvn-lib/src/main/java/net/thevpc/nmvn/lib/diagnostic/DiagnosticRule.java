@@ -49,5 +49,11 @@ public enum DiagnosticRule {
     CIRCULAR_DEPENDENCY,
 
     /** A POM or configured root was skipped, so workspace results are incomplete. */
-    INCOMPLETE_SCAN
+    INCOMPLETE_SCAN,
+
+    /** A scanned project's {@code target/} directory is not excluded by Git. */
+    TARGET_NOT_IGNORED,
+
+    /** Files under a scanned project's {@code target/} directory are still tracked by Git. */
+    TARGET_TRACKED
 }

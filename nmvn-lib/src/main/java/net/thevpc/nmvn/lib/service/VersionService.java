@@ -48,15 +48,42 @@ public class VersionService {
 
     public DiagnosticReport check(ScanResult scanResult, NMvnConfig config) {
         DiagnosticReport report = new ArtifactChecker().check(scanResult, config);
-        if (scanResult.getWarnings().isEmpty()) {
-            return report;
-        }
         List<DiagnosticIssue> issues = new ArrayList<>(report.getIssues());
         for (String warning : scanResult.getWarnings()) {
             issues.add(new DiagnosticIssue(
                     DiagnosticRule.INCOMPLETE_SCAN,
                     DiagnosticSeverity.ERROR,
                     (NId) null, null, warning));
+        }
+        for (TargetIgnoreService.Status status : new TargetIgnoreService().inspect(scanResult)) {
+            if (!status.isIssue()) {
+                continue;
+            }
+            NId targetId = status.getArtifact() != null ? status.getArtifact().toGa() : null;
+            NPath pomFile = status.getArtifact() != null ? status.getArtifact().getPath() : null;
+            if (!status.isIgnored()) {
+                Map<String, String> details = new LinkedHashMap<>();
+                details.put("repository", status.getGitRoot().toString());
+                details.put("gitignore", status.getGitIgnoreFile().toString());
+                issues.add(new DiagnosticIssue(
+                        DiagnosticRule.TARGET_NOT_IGNORED,
+                        DiagnosticSeverity.WARNING,
+                        targetId, pomFile,
+                        "target/ is not ignored by Git (fix with: nmvn clean --gitignore)",
+                        details));
+            }
+            if (status.isTracked()) {
+                Map<String, String> details = new LinkedHashMap<>();
+                details.put("repository", status.getGitRoot().toString());
+                details.put("trackedFiles", String.valueOf(status.getTrackedFileCount()));
+                issues.add(new DiagnosticIssue(
+                        DiagnosticRule.TARGET_TRACKED,
+                        DiagnosticSeverity.WARNING,
+                        targetId, pomFile,
+                        status.getTrackedFileCount() + " file(s) under target/ are still tracked by Git"
+                                + " (fix with: nmvn clean --gitignore)",
+                        details));
+            }
         }
         return new DiagnosticReport(issues);
     }

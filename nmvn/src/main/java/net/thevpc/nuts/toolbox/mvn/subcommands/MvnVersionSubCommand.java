@@ -11,6 +11,7 @@ import net.thevpc.nmvn.lib.model.*;
 import net.thevpc.nmvn.lib.service.BumpResult;
 import net.thevpc.nmvn.lib.service.ReleaseResult;
 import net.thevpc.nmvn.lib.service.ScanResult;
+import net.thevpc.nmvn.lib.service.TargetIgnoreService;
 import net.thevpc.nmvn.lib.service.VersionService;
 import net.thevpc.nuts.artifact.NId;
 import net.thevpc.nuts.cmdline.NCmdLine;
@@ -274,6 +275,7 @@ public class MvnVersionSubCommand {
         ScanResult scan = versionService.scan(config, workingDir);
         Map<NId, PomArtifact> artifacts = scan.getArtifacts();
         MavenDependencyGraph graph = scan.getGraph();
+        List<TargetIgnoreService.Status> targetStatuses = new TargetIgnoreService().inspect(scan);
 
         if (!NOut.isPlain()) {
             NObjectElementBuilder root = NElement.ofObjectBuilder();
@@ -282,6 +284,25 @@ public class MvnVersionSubCommand {
                 warnings.add(NElement.ofString(warning));
             }
             root.set("warnings", warnings.build());
+            NArrayElementBuilder targetIssues = NElement.ofArrayBuilder();
+            for (TargetIgnoreService.Status status : targetStatuses) {
+                if (status.isIssue() || status.getError() != null) {
+                    NObjectElementBuilder issue = NElement.ofObjectBuilder();
+                    issue.set("groupId", NElement.ofString(status.getArtifact().getGroupId()));
+                    issue.set("artifactId", NElement.ofString(status.getArtifact().getArtifactId()));
+                    issue.set("pom", NElement.ofString(status.getArtifact().getPath().toString()));
+                    issue.set("targetDir", NElement.ofString(status.getTargetDir().toString()));
+                    issue.set("gitRoot", NElement.ofString(status.getGitRoot().toString()));
+                    issue.set("notIgnored", !status.isIgnored());
+                    issue.set("trackedFiles", status.getTrackedFileCount());
+                    if (status.getError() != null) {
+                        issue.set("error", NElement.ofString(status.getError()));
+                    }
+                    issue.set("message", NElement.ofString(status.getMessage()));
+                    targetIssues.add(issue.build());
+                }
+            }
+            root.set("targetIgnoreIssues", targetIssues.build());
             NArrayElementBuilder arr = NElement.ofArrayBuilder();
             for (PomArtifact a : artifacts.values()) {
                 NObjectElementBuilder obj = NElement.ofObjectBuilder();
@@ -308,6 +329,7 @@ public class MvnVersionSubCommand {
         }
 
         printScanWarnings(scan);
+        printTargetIgnoreIssues(targetStatuses);
         NOut.println(NMsg.ofStyled(String.format("Discovered %d Maven artifact(s):", artifacts.size()), NTextStyle.primary4()));
         for (PomArtifact a : artifacts.values()) {
             NOut.println(NMsg.ofC("  [bold %s:%s] -> %s", a.getGroupId(), a.getArtifactId(), a.getResolvedVersion()));
@@ -619,6 +641,20 @@ public class MvnVersionSubCommand {
     private void printScanWarnings(ScanResult scan) {
         for (String warning : scan.getWarnings()) {
             NOut.println(NMsg.ofStyled("Scan warning: " + warning, NTextStyle.warn()));
+        }
+    }
+
+    private void printTargetIgnoreIssues(List<TargetIgnoreService.Status> statuses) {
+        for (TargetIgnoreService.Status status : statuses) {
+            if (status.isIssue()) {
+                NOut.println(NMsg.ofStyled(String.format(
+                        "Git warning: %s (%s). Fix with: nmvn clean --gitignore",
+                        status.getTargetDir(), status.getMessage()), NTextStyle.warn()));
+            } else if (status.getError() != null) {
+                NOut.println(NMsg.ofStyled(String.format(
+                        "Git warning: %s (%s)", status.getTargetDir(), status.getMessage()),
+                        NTextStyle.warn()));
+            }
         }
     }
 

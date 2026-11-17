@@ -9,7 +9,7 @@ manage multi-project maven worksets and versions
 ==nmvn== **version update**  [{{scan-options}}] [**--dry**] [**--cascade**=<versions|references|none>] [**-a**] <GA#VER>...
 ==nmvn== **version release** [{{scan-options}}] [**--dry**] [**--strict**] [**-a** <GA#VER>]...
 ==nmvn== **version check**   [{{scan-options}}] [**--fail-on-warning**] [**-j**|**--json**]
-==nmvn== **clean**           [**--simple**] [**--workset** <NAME|FILE>] [**--root** <DIR>]... [**--exclude** <GLOB>]... [**--no-ignore**]
+==nmvn== **clean**           [**--simple**|**--gitignore**] [**--workset** <NAME|FILE>] [**--root** <DIR>]... [**--exclude** <GLOB>]... [**--no-ignore**]
 ==nmvn== **get**             <G:A:V> [<REPO>]
 ==nmvn== **diff-jar**        [**-r** <REPO_URL>]... <JAR1> <JAR2>
 
@@ -30,6 +30,12 @@ manage multi-project maven worksets and versions
     ```sh --no-ignore```
         disable implicit generated-directory and `.gitignore` filtering for scan-based commands.
         Explicit `--exclude` patterns remain active.
+
+    ```sh --gitignore | --fix-gitignore```
+        in `clean` mode, check each scanned project's `target/` directory. When it is not
+        excluded, append `target/` to that repository's `.gitignore` and untrack tracked
+        target files with `git rm -r --cached`. Working-tree files are kept. With `--dry`
+        only report what would change. This mode does not run Maven or delete `target/`.
 
     ```sh -a <GA[#VER]> | -a=<GA[#VER]> | --artifact=<GA[#VER]>```
         specify target artifact and optional version using standard Nuts '#' delimiter (e.g. `com.example:mod1#1.0.0.0`) or '=' delimiter (`com.example:mod1=1.0.0.0`). For bump, omitting version auto-increments using the selected or default policy. Can be specified multiple times.
@@ -112,6 +118,12 @@ manage multi-project maven worksets and versions
 
 ```sh nmvn clean --simple```
    delete the target/ folder of every scanned project
+
+```sh nmvn clean --gitignore --dry```
+   report projects whose target/ is not ignored or is still tracked by Git
+
+```sh nmvn clean --gitignore```
+   add target/ to each repository .gitignore and untrack it (keeps files on disk)
 
 ```sh nmvn workset add-root ../other-project --scan```
    add a root folder to current workset and scan discovered artifacts

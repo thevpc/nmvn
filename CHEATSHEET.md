@@ -67,6 +67,8 @@ Notes:
 | `nmvn build clean install` | Maven clean + install. `nmvn clean install` does **not** work (`install` is read as a folder). |
 | `nmvn clean --simple` | Fast: delete `target/` of every scanned project without starting Maven. |
 | `nmvn clean` | Run `mvn clean` in every scanned project. |
+| `nmvn clean --gitignore --dry` | Preview repositories whose `target/` is not ignored or is still tracked by Git. |
+| `nmvn clean --gitignore` | Add `target/` to each repo `.gitignore` and untrack it; keeps files on disk. |
 | `nmvn get g:a:v` | Pull an artifact into `~/.m2`. |
 | `nmvn diff-jar old.jar new.jar` | Check whether two jars (paths, URLs or `g:a:v`) differ, ignoring `META-INF`. |
 

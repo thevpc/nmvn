@@ -4,10 +4,15 @@ import net.thevpc.nuts.Nuts;
 import net.thevpc.nuts.io.NPath;
 import net.thevpc.nuts.toolbox.mvn.subcommands.MvnCleanSubCommand;
 import org.junit.Assert;
+import org.junit.Assume;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
+
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 
 public class MvnCleanSubCommandTest {
 
@@ -117,5 +122,93 @@ public class MvnCleanSubCommandTest {
         Assert.assertEquals(0, code);
         Assert.assertFalse(t1.exists());
         Assert.assertTrue(t2.resolve("b.txt").isRegularFile());
+    }
+
+    @Test
+    public void testCleanGitignoreDryRunReportsAndApplyUntracks() throws Exception {
+        Assume.assumeTrue(isGitAvailable());
+
+        NPath root = NPath.of(temp.newFolder("clean-gitignore"));
+        NPath mod1 = root.resolve("mod1");
+        createPom(mod1, pom("com.cl", "mod1", "1.0.0"));
+
+        NPath targetFile = mod1.resolve("target").resolve("classes").resolve("a.class");
+        targetFile.parent().mkdirs();
+        targetFile.writeString("compiled");
+
+        runGit(root, "init", "-q");
+        runGit(root, "config", "user.email", "test@example.com");
+        runGit(root, "config", "user.name", "Test");
+        runGit(root, "add", ".");
+        runGit(root, "commit", "-qm", "init");
+        Assert.assertTrue(runGit(root, "ls-files", "--", "mod1/target").contains("a.class"));
+
+        MvnCleanSubCommand cli = new MvnCleanSubCommand();
+
+        // Dry run: report only, no index or .gitignore changes.
+        Assert.assertEquals(0, cli.run(new String[]{
+                "--gitignore", "--dry", "--root", root.toString()
+        }));
+        Assert.assertFalse(root.resolve(".gitignore").exists());
+        Assert.assertTrue(runGit(root, "ls-files", "--", "mod1/target").contains("a.class"));
+        Assert.assertTrue(targetFile.isRegularFile());
+
+        // Apply: add ignore rule and remove target from the index, keeping the file.
+        Assert.assertEquals(0, cli.run(new String[]{
+                "--gitignore", "--root", root.toString()
+        }));
+        Assert.assertTrue(root.resolve(".gitignore").readString().contains("target/"));
+        Assert.assertFalse(runGit(root, "ls-files", "--", "mod1/target").contains("a.class"));
+        Assert.assertTrue(targetFile.isRegularFile());
+        Assert.assertEquals(0, runGitExit(root, "check-ignore", "--no-index", "-q", "--", "mod1/target/"));
+    }
+
+    private static boolean isGitAvailable() {
+        try {
+            Process process = new ProcessBuilder("git", "--version")
+                    .redirectErrorStream(true).start();
+            return process.waitFor() == 0;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static String runGit(NPath dir, String... args) throws Exception {
+        GitRun run = git(dir, args);
+        Assert.assertEquals("git " + String.join(" ", args) + " failed: " + run.output, 0, run.exitCode);
+        return run.output;
+    }
+
+    private static int runGitExit(NPath dir, String... args) throws Exception {
+        return git(dir, args).exitCode;
+    }
+
+    private static GitRun git(NPath dir, String... args) throws Exception {
+        String[] command = new String[args.length + 1];
+        command[0] = "git";
+        System.arraycopy(args, 0, command, 1, args.length);
+        ProcessBuilder pb = new ProcessBuilder(command);
+        pb.directory(dir.toPath().get().toFile());
+        pb.redirectErrorStream(true);
+        Process process = pb.start();
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (InputStream in = process.getInputStream()) {
+            byte[] buffer = new byte[4096];
+            int read;
+            while ((read = in.read(buffer)) >= 0) {
+                out.write(buffer, 0, read);
+            }
+        }
+        return new GitRun(process.waitFor(), new String(out.toByteArray(), StandardCharsets.UTF_8));
+    }
+
+    private static final class GitRun {
+        private final int exitCode;
+        private final String output;
+
+        private GitRun(int exitCode, String output) {
+            this.exitCode = exitCode;
+            this.output = output;
+        }
     }
 }
